@@ -1,0 +1,11 @@
+# Normalizar finales de línea automáticamente entre Windows (CRLF) y Mac/Linux (LF)
+* text=auto
+
+# Archivos de código Python y configuración siempre en LF
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+
+# Datos CSV de NASA POWER consistentes sin alterar saltos innecesarios
+*.csv text eol=lf
