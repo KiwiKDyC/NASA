@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -10,149 +11,461 @@ from modelo_rotacion import (
 )
 
 st.set_page_config(
-    page_title="AgroRotación NASA | Valle Central de Chile",
+    page_title="AgroSatélite NASA | Rotación de Cultivos Chile",
     page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Estilos CSS responsivos para escritorio y móvil
-st.markdown(
+# Iconografía visual para cada hortaliza (amigable para el productor)
+ICONOS_CULTIVOS = {
+    "Papa": "🥔",
+    "Tomate": "🍅",
+    "Pimentón": "🫑",
+    "Cebolla": "🧅",
+    "Lechuga": "🥬",
+    "Poroto verde": "🫛",
+    "Haba / Arveja": "🌿",
+    "Zapallo": "🎃",
+    "Zanahoria": "🥕",
+    "Avena + Vicia (Cobertura)": "🌾",
+}
+
+
+def obtener_icono_cultivo(nombre: str) -> str:
+    for clave, icono in ICONOS_CULTIVOS.items():
+        if clave.lower() in nombre.lower():
+            return icono
+    return "🌱"
+
+
+def inyectar_estilos_campo_claro():
+    """CSS de alto contraste para lectura bajo luz solar directa (Tema Claro Agrícola:
+    Azul Agua, Café Tierra, Verde Hojas y Azul Espacial NASA).
     """
-    <style>
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-    }
-    .hero-banner {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #065f46 100%);
-        color: #f8fafc;
-        padding: 1.5rem 1.8rem;
-        border-radius: 14px;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25);
-    }
-    .hero-title {
-        font-size: 1.75rem;
-        font-weight: 800;
-        margin: 0;
-        letter-spacing: -0.02em;
-    }
-    .hero-sub {
-        font-size: 0.98rem;
-        color: #cbd5e1;
-        margin-top: 0.35rem;
-    }
-    .scenario-card {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 1.25rem;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
-        height: 100%;
-    }
-    .scenario-winner {
-        border: 2.5px solid #10b981;
-        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.14);
-    }
-    .badge-pill {
-        display: inline-block;
-        padding: 0.22rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: white;
-        margin-bottom: 0.5rem;
-    }
-    .crop-name {
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: #0f172a;
-        margin: 0.2rem 0;
-    }
-    .family-tag {
-        font-size: 0.85rem;
-        color: #475569;
-        font-weight: 600;
-        margin-bottom: 0.75rem;
-    }
-    .metric-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.86rem;
-        padding: 0.32rem 0;
-        border-bottom: 1px dashed #e2e8f0;
-        color: #1e293b;
-    }
-    @media (prefers-color-scheme: dark) {
-        .scenario-card {
-            background-color: #1e293b;
-            border-color: #334155;
+    st.markdown(
+        """
+        <style>
+        /* Forzar fondo claro cálido de alto contraste para lectura bajo el sol */
+        .stApp {
+            background-color: #FBF9F5 !important;
+            color: #1C2819 !important;
         }
-        .crop-name {
-            color: #f8fafc;
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #EFECE4 0%, #E5DEC9 100%) !important;
+            border-right: 3px solid #8D6E63 !important;
         }
-        .family-tag {
-            color: #94a3b8;
+        [data-testid="stSidebar"] * {
+            color: #1C2819 !important;
         }
-        .metric-row {
-            color: #e2e8f0;
-            border-bottom-color: #334155;
+        .block-container {
+            padding-top: 1.2rem;
+            padding-bottom: 2.5rem;
+            max-width: 1420px;
         }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+
+        /* Banner Satelital NASA + Campo */
+        .nasa-agro-banner {
+            background: linear-gradient(115deg, #0B3D91 0%, #1565C0 38%, #2E7D32 78%, #5D4037 100%);
+            color: #FFFFFF;
+            padding: 1.35rem 1.75rem;
+            border-radius: 18px;
+            margin-bottom: 1.2rem;
+            box-shadow: 0 6px 20px rgba(11, 61, 145, 0.22);
+            border: 2px solid #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .banner-left {
+            display: flex;
+            align-items: center;
+            gap: 1.1rem;
+        }
+        .banner-title {
+            font-size: 1.65rem;
+            font-weight: 900;
+            margin: 0;
+            color: #FFFFFF !important;
+            letter-spacing: -0.01em;
+        }
+        .banner-sub {
+            font-size: 1.02rem;
+            color: #E3F2FD !important;
+            margin: 0.25rem 0 0 0;
+            font-weight: 600;
+        }
+        .nasa-pill {
+            background-color: #FC3D21;
+            color: #FFFFFF !important;
+            font-weight: 800;
+            padding: 0.35rem 0.9rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            letter-spacing: 0.04em;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+            display: inline-block;
+        }
+
+        /* Títulos de sección con analogía de colores */
+        .section-header {
+            font-size: 1.28rem;
+            font-weight: 900;
+            padding: 0.55rem 1rem;
+            border-radius: 12px;
+            margin: 1rem 0 0.75rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .header-water {
+            background-color: #E1F5FE;
+            color: #01579B !important;
+            border-left: 7px solid #0288D1;
+        }
+        .header-earth {
+            background-color: #EFEBE9;
+            color: #4E342E !important;
+            border-left: 7px solid #6D4C41;
+        }
+        .header-leaf {
+            background-color: #E8F5E9;
+            color: #1B5E20 !important;
+            border-left: 7px solid #2E7D32;
+        }
+
+        /* Tarjetas de Presentación para Escenarios (Poca letra, alto impacto visual) */
+        .crop-card {
+            background: #FFFFFF;
+            border-radius: 18px;
+            padding: 1.25rem 1.3rem;
+            border: 2.5px solid #D7CCC8;
+            box-shadow: 0 5px 14px rgba(93, 64, 55, 0.08);
+            transition: transform 0.15s ease;
+            height: 100%;
+        }
+        .crop-card-winner {
+            background: linear-gradient(180deg, #FFFFFF 0%, #F1F8E9 100%);
+            border: 3.5px solid #2E7D32;
+            box-shadow: 0 8px 24px rgba(46, 125, 50, 0.22);
+        }
+        .crop-card-danger {
+            background: linear-gradient(180deg, #FFFFFF 0%, #FFEBEE 100%);
+            border: 2.5px solid #E53935;
+        }
+        .crop-card-water {
+            background: linear-gradient(180deg, #FFFFFF 0%, #E1F5FE 100%);
+            border: 3px solid #0288D1;
+        }
+        .crop-emoji-big {
+            font-size: 3.1rem;
+            line-height: 1.1;
+            margin-right: 0.6rem;
+        }
+        .crop-title-big {
+            font-size: 1.55rem;
+            font-weight: 900;
+            color: #1C2819 !important;
+            margin: 0;
+        }
+        .visual-chips-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.55rem;
+            margin-top: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+        .v-chip {
+            border-radius: 12px;
+            padding: 0.5rem 0.65rem;
+            font-size: 0.88rem;
+            font-weight: 700;
+            display: flex;
+            flex-direction: column;
+        }
+        .v-chip span.label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+        .v-chip span.val {
+            font-size: 1.02rem;
+            font-weight: 900;
+        }
+        .chip-water {
+            background-color: #E1F5FE;
+            color: #01579B !important;
+            border: 1.5px solid #81D4FA;
+        }
+        .chip-earth {
+            background-color: #EFEBE9;
+            color: #4E342E !important;
+            border: 1.5px solid #BCAAA4;
+        }
+        .chip-leaf {
+            background-color: #E8F5E9;
+            color: #1B5E20 !important;
+            border: 1.5px solid #A5D6A7;
+        }
+        .chip-sun {
+            background-color: #FFF8E1;
+            color: #E65100 !important;
+            border: 1.5px solid #FFE082;
+        }
+        .progress-track {
+            background-color: #E0E0E0;
+            border-radius: 999px;
+            height: 14px;
+            width: 100%;
+            overflow: hidden;
+            margin: 0.45rem 0;
+        }
+        .short-tip {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #263238 !important;
+            background: rgba(255,255,255,0.85);
+            padding: 0.55rem 0.75rem;
+            border-radius: 10px;
+            border-left: 4px solid #2E7D32;
+            margin-top: 0.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def crear_medidor_variable(
+    titulo: str,
+    icono: str,
+    valor: float,
+    sufijo: str,
+    min_val: float,
+    max_val: float,
+    color_barra: str,
+    color_fondo_rango: str,
+    subtitulo: str,
+) -> go.Figure:
+    """Crea una figura tipo Velocímetro/Termómetro (Gauge) individual para cada variable NASA."""
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=valor,
+            number={
+                "suffix": f" {sufijo}",
+                "font": {"size": 26, "color": "#1C2819", "family": "Arial Black"},
+            },
+            title={
+                "text": f"<b>{icono} {titulo}</b><br><span style='font-size:12px;color:#4E342E'>{subtitulo}</span>",
+                "font": {"size": 15, "color": "#1C2819"},
+            },
+            gauge={
+                "axis": {
+                    "range": [min_val, max_val],
+                    "tickwidth": 1,
+                    "tickcolor": "#4E342E",
+                    "tickfont": {"size": 11, "color": "#1C2819"},
+                },
+                "bar": {"color": color_barra, "thickness": 0.65},
+                "bgcolor": "#FFFFFF",
+                "borderwidth": 2,
+                "bordercolor": "#D7CCC8",
+                "steps": [
+                    {"range": [min_val, min_val + (max_val - min_val) * 0.35], "color": "#F5F5F5"},
+                    {
+                        "range": [
+                            min_val + (max_val - min_val) * 0.35,
+                            min_val + (max_val - min_val) * 0.75,
+                        ],
+                        "color": color_fondo_rango,
+                    },
+                    {"range": [min_val + (max_val - min_val) * 0.75, max_val], "color": "#FFFDE7"},
+                ],
+            },
+        )
+    )
+    fig.update_layout(
+        height=195,
+        margin=dict(l=18, r=18, t=58, b=12),
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="#1C2819"),
+    )
+    return fig
+
+
+def crear_figura_perfil_tierra_agua(ind: dict, zona: str) -> go.Figure:
+    """Figura corte transversal de la Tierra (Café Tierra + Azul Agua):
+    Muestra cuánta agua hay en cada capa del suelo según el satélite NASA.
+    """
+    capas = [
+        "3. Suelo Profundo (GWETPROF >100cm)",
+        "2. Zona de Raíces (GWETROOT 10-100cm)",
+        "1. Capa Superficial (GWETTOP 0-10cm)",
+    ]
+    valores = [
+        round(ind["humedad_prof_actual"] * 100, 1),
+        round(ind["humedad_raiz_actual"] * 100, 1),
+        round(ind["humedad_sup_actual"] * 100, 1),
+    ]
+    colores_agua = ["#01579B", "#0288D1", "#29B6F6"]
+
+    fig = go.Figure()
+    # Fondo café tierra (100% capacidad del poro)
+    fig.add_trace(
+        go.Bar(
+            y=capas,
+            x=[100, 100, 100],
+            orientation="h",
+            name="Capacidad del Suelo (Tierra)",
+            marker=dict(color="#D7CCC8", line=dict(color="#6D4C41", width=1.5)),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    # Relleno azul agua encima
+    fig.add_trace(
+        go.Bar(
+            y=capas,
+            x=valores,
+            orientation="h",
+            name="Agua Disponible (%)",
+            text=[f"💧 {v}% de Agua" for v in valores],
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(color="#FFFFFF", size=14, family="Arial Black"),
+            marker=dict(color=colores_agua, line=dict(color="#01579B", width=2)),
+        )
+    )
+
+    fig.update_layout(
+        barmode="overlay",
+        title=dict(
+            text=f"<b>🌱💧 Corte del Suelo desde el Satélite ({zona})</b>",
+            font=dict(size=16, color="#4E342E"),
+        ),
+        xaxis=dict(
+            title="Porcentaje de Humedad en la Tierra (%)",
+            range=[0, 105],
+            tickfont=dict(color="#1C2819", size=12),
+            title_font=dict(color="#1C2819", size=13),
+        ),
+        yaxis=dict(tickfont=dict(color="#1C2819", size=13)),
+        height=280,
+        margin=dict(l=15, r=20, t=48, b=35),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#EFEBE9",
+        showlegend=False,
+    )
+    return fig
+
+
+def crear_radar_comparativo_escenarios(escenarios: list) -> go.Figure:
+    """Gráfico Radar (Estrella) que compara visualmente las 3 opciones sin necesidad de leer texto."""
+    categorias = [
+        "💧 Ahorro de Agua",
+        "🌱 Salud de Tierra",
+        "🛡️ Corte de Plagas",
+        "☀️ Energía Solar (GDD)",
+        "❄️ Resistencia al Frío",
+    ]
+
+    fig = go.Figure()
+    colores_esc = ["#E53935", "#0288D1", "#2E7D32"]
+
+    for idx, esc in enumerate(escenarios):
+        kc = esc["kc_promedio"]
+        ahorro_pts = max(20, min(100, int((1.05 - kc) * 180)))
+        aporte = esc["aporte_suelo"]
+        if "Fijador" in aporte:
+            suelo_pts = 96
+        elif "Sanitizante" in aporte or "Cobertura" in aporte or "Descompactador" in aporte:
+            suelo_pts = 85
+        else:
+            suelo_pts = 30
+
+        plagas_pts = 20 if idx == 0 else 95
+        gdd_pts = min(100, esc["detalles"]["cumplimiento_gdd_pct"])
+        frio_pts = max(25, 100 - esc["detalles"]["dias_riesgo_helada"] * 15)
+
+        valores = [ahorro_pts, suelo_pts, plagas_pts, gdd_pts, frio_pts]
+        valores_cerrados = valores + [valores[0]]
+        cats_cerradas = categorias + [categorias[0]]
+
+        fig.add_trace(
+            go.Scatterpolar(
+                r=valores_cerrados,
+                theta=cats_cerradas,
+                fill="toself",
+                name=f"{esc['cultivo_recomendado']}",
+                line=dict(color=colores_esc[idx], width=3),
+            )
+        )
+
+    fig.update_layout(
+        title=dict(
+            text="<b>🎯 Comparación Visual de las 3 Opciones (Más grande = Mejor)</b>",
+            font=dict(size=16, color="#1B5E20"),
+        ),
+        polar=dict(
+            bgcolor="#FBF9F5",
+            radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(color="#1C2819", size=10)),
+            angularaxis=dict(tickfont=dict(color="#1C2819", size=12)),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.22,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="#1C2819", size=12),
+        ),
+        height=340,
+        margin=dict(l=35, r=35, t=50, b=55),
+        paper_bgcolor="#FFFFFF",
+    )
+    return fig
 
 
 def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, zona: str) -> go.Figure:
-    """Crea gráfico interactivo de doble panel: Humedad de Suelo (GWETROOT/GWETPROF/GWETTOP)
-    y Temperaturas (Aire T2M vs Suelo TS) con últimos 12 meses históricos + 6 meses proyectados.
-    """
-    df_h = df_hist.tail(365).copy()
+    """Gráfico histórico + proyección a 6 meses con colores de alto contraste (Azul Agua, Café Tierra, Verde Hoja)."""
+    df_h = df_hist.tail(300).copy()
     df_p = df_proj.copy()
 
-    # Suavizado móvil de 7 días para visualización limpia en histórico
     df_h["hum_raiz_suav"] = df_h["humedad_suelo_raiz"].rolling(7, min_periods=1).mean()
     df_h["hum_sup_suav"] = df_h["humedad_suelo_sup"].rolling(7, min_periods=1).mean()
     df_h["temp_media_suav"] = df_h["temp_media_c"].rolling(7, min_periods=1).mean()
-    if "temp_suelo_c" in df_h.columns:
-        df_h["temp_suelo_suav"] = df_h["temp_suelo_c"].rolling(7, min_periods=1).mean()
-    else:
-        df_h["temp_suelo_suav"] = df_h["temp_media_suav"]
+    df_h["temp_suelo_suav"] = (
+        df_h["temp_suelo_c"].rolling(7, min_periods=1).mean()
+        if "temp_suelo_c" in df_h.columns
+        else df_h["temp_media_suav"]
+    )
 
     fig = make_subplots(
         rows=2,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.10,
+        vertical_spacing=0.12,
         subplot_titles=(
-            f"💧 Humedad del Suelo NASA POWER en {zona} (Zona Radicular GWETROOT y Superficial GWETTOP)",
-            f"🌡️ Dinámica Térmica en {zona} (Temperatura Media 2m T2M y Temperatura de Suelo TS)",
+            f"💧 Agua en las Raíces ({zona}) — Histórico + Proyección Satelital 6 Meses",
+            f"🌡️ Temperatura de la Tierra y del Aire ({zona}) — Próximos 6 Meses",
         ),
         row_heights=[0.52, 0.48],
     )
 
-    # --- PANEL 1: HUMEDAD DEL SUELO ---
+    # Panel 1: Agua en el suelo
     fig.add_trace(
         go.Scatter(
             x=df_h["fecha"],
             y=df_h["hum_raiz_suav"] * 100,
             mode="lines",
-            name="Humedad Raíz Histórica (GWETROOT %)",
-            line=dict(color="#0284c7", width=2.6),
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df_h["fecha"],
-            y=df_h["hum_sup_suav"] * 100,
-            mode="lines",
-            name="Humedad Superficial Histórica (GWETTOP %)",
-            line=dict(color="#38bdf8", width=1.4, dash="dot"),
+            name="💧 Humedad Raíces (Observado NASA)",
+            line=dict(color="#0277BD", width=3.2),
+            fill="tozeroy",
+            fillcolor="rgba(2, 119, 189, 0.14)",
         ),
         row=1,
         col=1,
@@ -162,21 +475,23 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
             x=df_p["fecha"],
             y=df_p["humedad_suelo_raiz"] * 100,
             mode="lines",
-            name="Proyección 6 Meses Humedad Raíz (%)",
-            line=dict(color="#10b981", width=3.0, dash="dash"),
+            name="🌱 Humedad Raíces Proyectada (6 Meses)",
+            line=dict(color="#2E7D32", width=3.5, dash="dash"),
+            fill="tozeroy",
+            fillcolor="rgba(46, 125, 50, 0.14)",
         ),
         row=1,
         col=1,
     )
 
-    # --- PANEL 2: TEMPERATURAS ---
+    # Panel 2: Tierra y Aire
     fig.add_trace(
         go.Scatter(
             x=df_h["fecha"],
-            y=df_h["temp_media_suav"],
+            y=df_h["temp_suelo_suav"],
             mode="lines",
-            name="Temp. Aire 2m Histórica (T2M °C)",
-            line=dict(color="#f59e0b", width=2.2),
+            name="🤎 Temp. de la Tierra (TS °C)",
+            line=dict(color="#6D4C41", width=2.8),
         ),
         row=2,
         col=1,
@@ -184,10 +499,10 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
     fig.add_trace(
         go.Scatter(
             x=df_h["fecha"],
-            y=df_h["temp_suelo_suav"],
+            y=df_h["temp_media_suav"],
             mode="lines",
-            name="Temp. Suelo Histórica (TS °C)",
-            line=dict(color="#b45309", width=1.6, dash="dot"),
+            name="☀️ Temp. del Aire (T2M °C)",
+            line=dict(color="#F57C00", width=2.0, dash="dot"),
         ),
         row=2,
         col=1,
@@ -195,85 +510,132 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
     fig.add_trace(
         go.Scatter(
             x=df_p["fecha"],
-            y=df_p["temp_media_c"],
+            y=df_p["temp_suelo_c"] if "temp_suelo_c" in df_p.columns else df_p["temp_media_c"],
             mode="lines",
-            name="Proyección 6 Meses Temp. Aire (°C)",
-            line=dict(color="#ef4444", width=2.8, dash="dash"),
+            name="🚀 Proyección Temp. Tierra (6 Meses)",
+            line=dict(color="#D84315", width=3.2, dash="dash"),
         ),
         row=2,
         col=1,
     )
 
-    # Línea vertical divisoria entre Histórico y Proyección
     fecha_corte = df_h["fecha"].max()
     fig.add_vline(
         x=fecha_corte,
-        line_width=1.8,
+        line_width=2.2,
         line_dash="dashdot",
-        line_color="#64748b",
+        line_color="#0B3D91",
     )
 
-    fig.update_yaxes(title_text="Saturación (%)", range=[10, 100], row=1, col=1)
-    fig.update_yaxes(title_text="Temperatura (°C)", row=2, col=1)
+    fig.update_yaxes(
+        title_text="Agua en Suelo (%)",
+        range=[15, 100],
+        gridcolor="#E0E0E0",
+        tickfont=dict(color="#1C2819"),
+        title_font=dict(color="#01579B", size=13),
+        row=1,
+        col=1,
+    )
+    fig.update_yaxes(
+        title_text="Grados (°C)",
+        gridcolor="#E0E0E0",
+        tickfont=dict(color="#1C2819"),
+        title_font=dict(color="#4E342E", size=13),
+        row=2,
+        col=1,
+    )
+    fig.update_xaxes(gridcolor="#E0E0E0", tickfont=dict(color="#1C2819"))
     fig.update_layout(
-        height=560,
-        margin=dict(l=20, r=20, t=50, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
+        height=510,
+        margin=dict(l=20, r=20, t=55, b=20),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FBF9F5",
+        font=dict(color="#1C2819"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.06,
+            xanchor="left",
+            x=0,
+            font=dict(color="#1C2819", size=12),
+        ),
         hovermode="x unified",
     )
     return fig
 
 
 def main():
+    inyectar_estilos_campo_claro()
+
     df_hortalizas = cargar_catalogo_hortalizas()
     lista_cultivos = df_hortalizas["cultivo"].tolist()
 
-    # --- BARRA LATERAL (FILTROS DEL AGRICULTOR) ---
+    # =========================================================================
+    # BARRA LATERAL: CONTROLES SIMPLES Y VISUALES PARA EL AGRICULTOR
+    # =========================================================================
     with st.sidebar:
-        st.markdown("## 🛰️ Configuración Predial")
-        st.caption("Datos agroclimáticos satelitales **NASA POWER (2021-2026)** | Modo 100% Offline")
+        st.markdown(
+            """
+            <div style="text-align:center; background:#0B3D91; color:white !important; padding:0.9rem; border-radius:14px; margin-bottom:1rem;">
+                <div style="font-size:2.3rem;">🛰️🌱</div>
+                <div style="font-weight:900; font-size:1.15rem; color:white !important;">MI POTRERO NASA</div>
+                <div style="font-size:0.8rem; color:#BBDEFB !important;">Configura tu campo en 4 pasos</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         zona_sel = st.selectbox(
-            "📍 Comuna / Zona Agroclimática",
+            "1️⃣ ¿Dónde está tu campo?",
             options=list(ZONAS_CHILE.keys()),
-            format_func=lambda z: f"{z} (Región de {ZONAS_CHILE[z]['region']})",
+            format_func=lambda z: f"📍 {z} ({ZONAS_CHILE[z]['region']})",
             index=0,
         )
 
         cultivo_sel = st.selectbox(
-            "🌱 Cultivo Actual o Recién Cosechado",
+            "2️⃣ ¿Qué acabas de cosechar?",
             options=lista_cultivos,
+            format_func=lambda c: f"{obtener_icono_cultivo(c)} {c}",
             index=1 if "Tomate" in lista_cultivos else 0,
         )
 
         agua_sel = st.select_slider(
-            "💧 Disponibilidad de Agua en el Predio",
+            "3️⃣ ¿Cuánta agua tienes para regar?",
             options=["Baja", "Media", "Alta"],
             value="Baja",
         )
 
         prioridad_sel = st.radio(
-            "🎯 Prioridad Productiva para la Próxima Rotación",
+            "4️⃣ ¿Qué es lo más importante ahora?",
             options=[
-                "Ahorrar agua",
-                "Recuperar salud del suelo / nitrógeno",
-                "Estabilidad térmica",
+                "💧 Ahorrar agua",
+                "🤎 Recuperar salud del suelo / nitrógeno",
+                "☀️ Estabilidad térmica (evitar heladas)",
             ],
             index=0,
         )
 
         st.divider()
+        modo_vista = st.toggle(
+            "🔬 Activar Modo Experto / Agrónomo",
+            value=False,
+            help="Muestra tablas técnicas, coeficientes Kc, GDD detallados y datos crudos del satélite NASA.",
+        )
+
         info_z = ZONAS_CHILE[zona_sel]
         st.markdown(
             f"""
-            **Ficha Satelital ({zona_sel}):**
-            - **Coordenadas:** `{info_z['lat']}°, {info_z['lon']}°`
-            - **Región:** {info_z['region']}
-            - **Fuente:** NASA LaRC POWER Agroclimatology
-            """
+            <div style="background:#FFFFFF; padding:0.75rem; border-radius:12px; border:1.5px solid #BCAAA4; font-size:0.84rem;">
+                <b>📡 Satélite NASA POWER Activo</b><br>
+                📍 <b>Comuna:</b> {zona_sel}<br>
+                🧭 <b>Coord:</b> {info_z['lat']}°, {info_z['lon']}°<br>
+                📶 <b>Estado:</b> 100% Offline Listo
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-    # --- EJECUTAR MOTOR DE ANÁLISIS Y ROTACIÓN ---
+    # Ejecutar motor
     resultado = generar_escenarios_rotacion(
         zona=zona_sel,
         nombre_cultivo_actual=cultivo_sel,
@@ -283,155 +645,316 @@ def main():
     ind = resultado["indicadores"]
     cultivo_act = resultado["cultivo_actual"]
     ganador = resultado["recomendacion_principal"]
+    icono_actual = obtener_icono_cultivo(cultivo_sel)
+    icono_ganador = obtener_icono_cultivo(ganador["cultivo_recomendado"])
 
-    # --- ENCABEZADO PRINCIPAL ---
+    # =========================================================================
+    # BANNER SUPERIOR CON ILUSTRACIÓN SVG SATÉLITE NASA -> CAMPO CHILENO
+    # =========================================================================
     st.markdown(
         f"""
-        <div class="hero-banner">
-            <p class="hero-title">🛰️ AgroRotación Chile — Sistema de Apoyo a la Decisión con Datos NASA</p>
-            <p class="hero-sub">
-                Recomendador inteligente de rotación de hortalizas en el Valle Central |
-                <strong>Zona:</strong> {zona_sel} ({ZONAS_CHILE[zona_sel]['region']}) •
-                <strong>Cultivo Base:</strong> {cultivo_sel} ({cultivo_act['familia_botanica']}) •
-                <strong>Recomendación Óptima:</strong> {ganador['cultivo_recomendado']} ({resultado['estrategia_ganadora']})
-            </p>
+        <div class="nasa-agro-banner">
+            <div class="banner-left">
+                <div style="font-size:3.2rem; line-height:1;">🛰️🌍🌾</div>
+                <div>
+                    <span class="nasa-pill">NASA SPACE APPS • AGROCLIMATOLOGÍA SATELITAL</span>
+                    <p class="banner-title">Guía Visual de Rotación de Cultivos — {zona_sel}</p>
+                    <p class="banner-sub">
+                        Vienes de <b>{icono_actual} {cultivo_sel}</b> ➔ El satélite recomienda sembrar:
+                        <b style="background:#2E7D32; padding:2px 10px; border-radius:8px; color:#FFF !important;">
+                            {icono_ganador} {ganador['cultivo_recomendado']}
+                        </b>
+                    </p>
+                </div>
+            </div>
+            <div style="text-align:right; background:rgba(255,255,255,0.15); padding:0.65rem 1rem; border-radius:12px;">
+                <div style="font-size:0.78rem; color:#E3F2FD !important; font-weight:700;">VIABILIDAD DEL CAMPO</div>
+                <div style="font-size:1.9rem; font-weight:900; color:#FFFFFF !important;">{ganador['puntaje_viabilidad']:.0f}% ⭐</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # --- FILA DE KPIs SATELITALES NASA POWER ---
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        st.metric(
-            label="💧 Humedad Raíz (GWETROOT)",
-            value=f"{ind['humedad_raiz_actual']*100:.1f}%",
-            delta=f"{ind['delta_humedad_raiz']*100:+.1f}% proy. 6m",
-        )
-    with col2:
-        st.metric(
-            label="☀️ GDD Proyectados (120d)",
-            value=f"{ind['gdd_proj_120']:.0f} GDD",
-            delta=f"Base {cultivo_act['t_base_gdd']} °C",
-            delta_color="off",
-        )
-    with col3:
-        st.metric(
-            label="🌡️ Temp. Suelo (NASA TS)",
-            value=f"{ind['temp_suelo_actual_c']:.1f} °C",
-            delta=f"Proy: {ind['temp_suelo_proj_c']:.1f} °C",
-            delta_color="off",
-        )
-    with col4:
-        st.metric(
-            label="🌧️ Precipitación Anual",
-            value=f"{ind['precip_ultimo_anio_mm']:.0f} mm",
-            delta=f"{ind['anomalia_precip_pct']:+.1f}% vs media",
-        )
-    with col5:
-        st.metric(
-            label="❄️ Riesgo Heladas (6m)",
-            value=f"{ind['dias_riesgo_cultivo_proj']} días",
-            delta=f"Umbral {cultivo_act['t_min_helada']} °C",
-            delta_color="inverse",
-        )
+    # =========================================================================
+    # SECCIÓN 1: TARJETAS DE PRESENTACIÓN (¿QUÉ SIEMBRO AHORA?) - POCA LETRA
+    # =========================================================================
+    st.markdown(
+        '<div class="section-header header-leaf">🌱 PASO 1: Elige tu Próximo Cultivo (Tarjetas de Decisión Rápida)</div>',
+        unsafe_allow_html=True,
+    )
 
-    # --- ALERTAS AGRONÓMICAS ---
-    for alerta in resultado["alertas"]:
-        if alerta["tipo"] == "warning":
-            st.warning(f"**{alerta['titulo']}:** {alerta['mensaje']}", icon="⚠️")
-        elif alerta["tipo"] == "info":
-            st.info(f"**{alerta['titulo']}:** {alerta['mensaje']}", icon="ℹ️")
-        else:
-            st.success(f"**{alerta['titulo']}:** {alerta['mensaje']}", icon="✅")
-
-    # --- TARJETAS COMPARATIVAS DE LOS 3 ESCENARIOS ---
-    st.subheader("🔄 Comparativa de 3 Escenarios de Rotación para el Próximo Ciclo")
     cols_esc = st.columns(3)
+    estilos_tarjeta = ["crop-card-danger", "crop-card-water", "crop-card-winner"]
+    iconos_medalla = ["⛔ NO REPETIR", "💧 OPCIÓN AHORRO AGUA", "🌱 OPCIÓN NUTRE LA TIERRA"]
 
     for idx, esc in enumerate(resultado["escenarios"]):
         es_ganador = esc["titulo"] == ganador["titulo"]
-        clase_extra = "scenario-winner" if es_ganador else ""
-        etiqueta_ganador = " ⭐ RECOMENDADO PARA TU PRIORIDAD" if es_ganador else ""
+        clase_card = "crop-card-winner" if es_ganador else estilos_tarjeta[idx]
+        icono_c = obtener_icono_cultivo(esc["cultivo_recomendado"])
         det = esc["detalles"]
+        viab = int(round(esc["puntaje_viabilidad"]))
 
-        puntos_html = "".join([f"<li style='margin-bottom:4px;'>{p}</li>" for p in esc["puntos_clave"]])
+        # Símbolos intuitivos de gotas de agua
+        if esc["demanda_hidrica"] == "Baja":
+            gotas_txt = "💧 Baja (Poca Agua)"
+        elif esc["demanda_hidrica"] == "Media":
+            gotas_txt = "💧💧 Media"
+        else:
+            gotas_txt = "💧💧💧 Alta (Mucha Agua)"
+
+        color_barra = "#E53935" if idx == 0 else ("#0288D1" if idx == 1 else "#2E7D32")
+        etiqueta_top = "🏆 MEJOR OPCIÓN PARA TI" if es_ganador else iconos_medalla[idx]
+
+        # Frase ultra-corta y directa para el pequeño agricultor
+        if idx == 0:
+            consejo_corto = f"⚠️ Cuidado: Si repites {cultivo_sel}, las plagas quedan en la tierra y rinde menos."
+        elif idx == 1:
+            consejo_corto = f"💧 Ideal con poca agua: gasta menos riego y limpia las plagas de {cultivo_sel}."
+        else:
+            consejo_corto = f"🤎 Abono natural: deja la tierra descansada y con alimento (Nitrógeno) para después."
 
         with cols_esc[idx]:
             st.markdown(
                 f"""
-                <div class="scenario-card {clase_extra}">
-                    <span class="badge-pill" style="background-color: {esc['color_badge']};">
-                        {esc['nivel_riesgo']}{etiqueta_ganador}
-                    </span>
-                    <div style="font-size:0.85rem; font-weight:700; color:#64748b;">{esc['titulo']}</div>
-                    <div class="crop-name">{esc['cultivo_recomendado']}</div>
-                    <div class="family-tag">🌿 Familia: {esc['familia_botanica']} • 🗓️ {esc['temporada_optima']}</div>
-                    <div class="metric-row">
-                        <span>Índice de Viabilidad Agro-NASA:</span>
-                        <strong>{esc['puntaje_viabilidad']:.0f} / 100</strong>
+                <div class="crop-card {clase_card}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                        <span style="background:{color_barra}; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.78rem; font-weight:900;">
+                            {etiqueta_top}
+                        </span>
+                        <span style="font-size:1.1rem; font-weight:900; color:{color_barra} !important;">
+                            {viab}% Éxito
+                        </span>
                     </div>
-                    <div class="metric-row">
-                        <span>Demanda Hídrica (Coef. Kc):</span>
-                        <strong>{esc['demanda_hidrica']} (Kc = {esc['kc_promedio']})</strong>
+                    <div style="display:flex; align-items:center; margin:0.4rem 0;">
+                        <span class="crop-emoji-big">{icono_c}</span>
+                        <div>
+                            <p class="crop-title-big">{esc['cultivo_recomendado']}</p>
+                            <span style="font-size:0.85rem; font-weight:700; color:#5D4037 !important;">
+                                🌿 Familia: {esc['familia_botanica']}
+                            </span>
+                        </div>
                     </div>
-                    <div class="metric-row">
-                        <span>Efecto en el Suelo:</span>
-                        <strong>{esc['aporte_suelo']}</strong>
+                    <div class="progress-track">
+                        <div style="width:{viab}%; background:{color_barra}; height:100%; border-radius:999px;"></div>
                     </div>
-                    <div class="metric-row">
-                        <span>Cumplimiento Térmico (GDD):</span>
-                        <strong>{det['cumplimiento_gdd_pct']}% ({det['gdd_disponibles']:.0f}/{det['gdd_requeridos']})</strong>
+                    <div class="visual-chips-grid">
+                        <div class="v-chip chip-water">
+                            <span class="label">Consumo de Agua</span>
+                            <span class="val">{gotas_txt}</span>
+                        </div>
+                        <div class="v-chip chip-earth">
+                            <span class="label">Aporte a la Tierra</span>
+                            <span class="val">🤎 {esc['aporte_suelo'].split()[0]}</span>
+                        </div>
+                        <div class="v-chip chip-leaf">
+                            <span class="label">Tiempo a Cosecha</span>
+                            <span class="val">🗓️ {esc['ciclo_dias']} días</span>
+                        </div>
+                        <div class="v-chip chip-sun">
+                            <span class="label">Riesgo Heladas</span>
+                            <span class="val">❄️ {det['dias_riesgo_helada']} días</span>
+                        </div>
                     </div>
-                    <div class="metric-row">
-                        <span>Días con Riesgo de Helada:</span>
-                        <strong>{det['dias_riesgo_helada']} días (en {esc['ciclo_dias']}d)</strong>
+                    <div class="short-tip" style="border-left-color:{color_barra};">
+                        {consejo_corto}
                     </div>
-                    <p style="font-size:0.85rem; margin-top:0.75rem; color:#334155;">
-                        {esc['justificacion']}
-                    </p>
-                    <ul style="font-size:0.82rem; padding-left:1.1rem; margin-bottom:0;">
-                        {puntos_html}
-                    </ul>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # =========================================================================
+    # SECCIÓN 2: UNA FIGURA PARA CADA VARIABLE SATELITAL (AGUA, TIERRA, SOL)
+    # =========================================================================
+    st.markdown(
+        '<div class="section-header header-water">🛰️ PASO 2: ¿Cómo ve el Satélite NASA tu Campo Hoy? (1 Figura por Variable)</div>',
+        unsafe_allow_html=True,
+    )
 
-    # --- GRÁFICO INTERACTIVO PLOTLY Y TABLA EXPLORATORIA ---
-    tab_grafico, tab_catalogo, tab_datos_nasa = st.tabs([
-        "📈 Evolución Histórica y Proyección NASA (6 Meses)",
-        "🌱 Catálogo Agronómico de Hortalizas",
-        "🛰️ Datos Crudos NASA POWER Extraídos",
-    ])
-
-    with tab_grafico:
-        fig = construir_grafico_clima_suelo(
-            resultado["df_historico"], resultado["df_proyeccion"], zona_sel
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "**Nota metodológica:** La línea punteada proyecta los próximos 180 días combinando tendencia "
-            "secular multianual (2021-2026) y armónicos estacionales de Fourier calibrados con los últimos 14 días observados por NASA POWER."
-        )
-
-    with tab_catalogo:
-        st.markdown("#### Matriz de Requerimientos Agronómicos y Rotación Fitosanitaria")
-        st.dataframe(
-            df_hortalizas,
+    # Fila 1 de medidores: 4 variables principales (Agua Raíz, Temp Tierra, Lluvia, Calor Solar GDD)
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Agua en Raíces",
+                icono="💧",
+                valor=round(ind["humedad_raiz_actual"] * 100, 1),
+                sufijo="%",
+                min_val=0,
+                max_val=100,
+                color_barra="#0288D1",
+                color_fondo_rango="#E1F5FE",
+                subtitulo=f"NASA GWETROOT (Proy 6m: {ind['humedad_raiz_proj']*100:.0f}%)",
+            ),
             use_container_width=True,
-            hide_index=True,
+        )
+    with g2:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Temp. de la Tierra",
+                icono="🤎",
+                valor=ind["temp_suelo_actual_c"],
+                sufijo="°C",
+                min_val=0,
+                max_val=35,
+                color_barra="#6D4C41",
+                color_fondo_rango="#EFEBE9",
+                subtitulo=f"NASA TS (Proy 6m: {ind['temp_suelo_proj_c']:.1f} °C)",
+            ),
+            use_container_width=True,
+        )
+    with g3:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Calor Acumulado",
+                icono="☀️",
+                valor=ind["gdd_proj_120"],
+                sufijo="GDD",
+                min_val=0,
+                max_val=1800,
+                color_barra="#2E7D32",
+                color_fondo_rango="#E8F5E9",
+                subtitulo="Energía para Crecer (Próx. 120 días)",
+            ),
+            use_container_width=True,
+        )
+    with g4:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Evaporación Diaria",
+                icono="💨",
+                valor=ind["evap_diaria_actual_mm"],
+                sufijo="mm/d",
+                min_val=0,
+                max_val=6,
+                color_barra="#F57C00",
+                color_fondo_rango="#FFF8E1",
+                subtitulo=f"NASA EVLAND ({ind['evap_acum_120d_mm']:.0f} mm en 120d)",
+            ),
+            use_container_width=True,
         )
 
-    with tab_datos_nasa:
-        st.markdown(f"#### Últimos registros diarios extraídos de NASA POWER para **{zona_sel}**")
-        st.dataframe(
-            resultado["df_historico"].tail(60).sort_values("fecha", ascending=False),
+    # Fila 2 de medidores: Las demás variables del satélite NASA (Radiación, Humedad Aire, Lluvia, Frío)
+    g5, g6, g7, g8 = st.columns(4)
+    with g5:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Luz del Sol",
+                icono="🔆",
+                valor=ind["radiacion_actual"],
+                sufijo="MJ",
+                min_val=0,
+                max_val=35,
+                color_barra="#FBC02D",
+                color_fondo_rango="#FFFDE7",
+                subtitulo="Radiación Solar (ALLSKY_SFC_SW_DWN)",
+            ),
             use_container_width=True,
-            hide_index=True,
         )
+    with g6:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Humedad del Aire",
+                icono="☁️",
+                valor=ind["humedad_rel_actual_pct"],
+                sufijo="%",
+                min_val=0,
+                max_val=100,
+                color_barra="#039BE5",
+                color_fondo_rango="#E1F5FE",
+                subtitulo="NASA RH2M (Riesgo de Hongos >75%)",
+            ),
+            use_container_width=True,
+        )
+    with g7:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Lluvia del Año",
+                icono="🌧️",
+                valor=ind["precip_ultimo_anio_mm"],
+                sufijo="mm",
+                min_val=0,
+                max_val=1200,
+                color_barra="#1565C0",
+                color_fondo_rango="#E3F2FD",
+                subtitulo=f"Media normal: {ind['precip_media_anual_mm']:.0f} mm/año",
+            ),
+            use_container_width=True,
+        )
+    with g8:
+        st.plotly_chart(
+            crear_medidor_variable(
+                titulo="Días de Helada",
+                icono="❄️",
+                valor=ind["dias_riesgo_cultivo_proj"],
+                sufijo="días",
+                min_val=0,
+                max_val=30,
+                color_barra="#00ACC1",
+                color_fondo_rango="#E0F7FA",
+                subtitulo="Riesgo de Frío en Próximos 6 Meses",
+            ),
+            use_container_width=True,
+        )
+
+    # =========================================================================
+    # SECCIÓN 3: DIAGRAMAS VISUALES (CORTE DE LA TIERRA + ESTRELLA COMPARATIVA)
+    # =========================================================================
+    st.markdown(
+        '<div class="section-header header-earth">🤎 PASO 3: Salud de tu Tierra y Pronóstico para los Próximos 6 Meses</div>',
+        unsafe_allow_html=True,
+    )
+
+    col_tierra, col_radar = st.columns([1.05, 0.95])
+    with col_tierra:
+        fig_perfil = crear_figura_perfil_tierra_agua(ind, zona_sel)
+        st.plotly_chart(fig_perfil, use_container_width=True)
+
+    with col_radar:
+        fig_radar = crear_radar_comparativo_escenarios(resultado["escenarios"])
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    # Gráfico temporal de evolución y proyección 6 meses
+    fig_evol = construir_grafico_clima_suelo(
+        resultado["df_historico"], resultado["df_proyeccion"], zona_sel
+    )
+    st.plotly_chart(fig_evol, use_container_width=True)
+
+    # =========================================================================
+    # SECCIÓN 4: PANEL PARA USUARIOS CON EXPERIENCIA / AGRÓNOMOS (COMPLEMENTARIO)
+    # =========================================================================
+    if modo_vista:
+        st.markdown(
+            '<div class="section-header header-leaf">🔬 Panel Técnico para Agricultores Experimentados y Asesores</div>',
+            unsafe_allow_html=True,
+        )
+        t1, t2 = st.tabs([
+            "📊 Matriz Agronómica Completa (Kc, GDD, Familias)",
+            "🛰️ Serie Diaria Satelital NASA POWER (11 Variables)",
+        ])
+        with t1:
+            st.dataframe(df_hortalizas, use_container_width=True, hide_index=True)
+        with t2:
+            st.dataframe(
+                resultado["df_historico"].tail(90).sort_values("fecha", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+            )
+    else:
+        with st.expander("🔬 ¿Eres agricultor con experiencia o técnico agrícola? Haz clic aquí para ver los datos completos"):
+            t1, t2 = st.tabs([
+                "📊 Tabla Técnica de Cultivos (Kc, GDD, Heladas)",
+                "🛰️ Datos Crudos del Satélite NASA POWER",
+            ])
+            with t1:
+                st.dataframe(df_hortalizas, use_container_width=True, hide_index=True)
+            with t2:
+                st.dataframe(
+                    resultado["df_historico"].tail(60).sort_values("fecha", ascending=False),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
 
 if __name__ == "__main__":

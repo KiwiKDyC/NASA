@@ -138,7 +138,7 @@ def calcular_indicadores_agronomicos(
     humedad_raiz_proj = float(df_proj["humedad_suelo_raiz"].mean())
     delta_humedad_raiz = humedad_raiz_proj - humedad_raiz_actual
 
-    # 5. Nuevas variables NASA: Temperatura de suelo (TS), Evapotranspiración (EVLAND) y Humedad profunda (GWETPROF)
+    # 5. Nuevas variables NASA: Temperatura de suelo (TS), Evapotranspiración (EVLAND), Humedad profunda (GWETPROF), Superficial (GWETTOP), RH2M y Radiación
     temp_suelo_actual = (
         float(df_hist.tail(30)["temp_suelo_c"].mean())
         if "temp_suelo_c" in df_hist.columns
@@ -154,11 +154,34 @@ def calcular_indicadores_agronomicos(
         if "evapotranspiracion_mm" in df_proj.columns
         else 180.0
     )
+    evap_diaria_actual = (
+        float(df_hist.tail(30)["evapotranspiracion_mm"].mean())
+        if "evapotranspiracion_mm" in df_hist.columns
+        else 1.5
+    )
+    humedad_sup_actual = (
+        float(df_hist.tail(30)["humedad_suelo_sup"].mean())
+        if "humedad_suelo_sup" in df_hist.columns
+        else humedad_raiz_actual
+    )
     humedad_prof_actual = (
         float(df_hist.tail(30)["humedad_suelo_prof"].mean())
         if "humedad_suelo_prof" in df_hist.columns
         else humedad_raiz_actual
     )
+    humedad_rel_actual = (
+        float(df_hist.tail(30)["humedad_relativa_pct"].mean())
+        if "humedad_relativa_pct" in df_hist.columns
+        else 65.0
+    )
+    radiacion_actual = (
+        float(df_hist.tail(30)["radiacion_solar"].mean())
+        if "radiacion_solar" in df_hist.columns
+        else 18.0
+    )
+    temp_media_actual = float(df_hist.tail(30)["temp_media_c"].mean())
+    temp_max_actual = float(df_hist.tail(30)["temp_max_c"].mean())
+    temp_min_actual = float(df_hist.tail(30)["temp_min_c"].mean())
 
     return {
         "gdd_hist_120": round(float(gdd_hist_120), 1),
@@ -168,13 +191,20 @@ def calcular_indicadores_agronomicos(
         "precip_ultimo_anio_mm": round(float(precip_ultimo_anio), 1),
         "precip_media_anual_mm": round(float(precip_media_anual), 1),
         "anomalia_precip_pct": round(float(anomalia_precip_pct), 1),
+        "humedad_sup_actual": round(humedad_sup_actual, 3),
         "humedad_raiz_actual": round(humedad_raiz_actual, 3),
         "humedad_raiz_proj": round(humedad_raiz_proj, 3),
         "delta_humedad_raiz": round(delta_humedad_raiz, 3),
+        "humedad_prof_actual": round(humedad_prof_actual, 3),
+        "temp_media_actual_c": round(temp_media_actual, 1),
+        "temp_max_actual_c": round(temp_max_actual, 1),
+        "temp_min_actual_c": round(temp_min_actual, 1),
         "temp_suelo_actual_c": round(temp_suelo_actual, 1),
         "temp_suelo_proj_c": round(temp_suelo_proj, 1),
+        "evap_diaria_actual_mm": round(evap_diaria_actual, 2),
         "evap_acum_120d_mm": round(evap_acum_proj, 1),
-        "humedad_prof_actual": round(humedad_prof_actual, 3),
+        "humedad_rel_actual_pct": round(humedad_rel_actual, 1),
+        "radiacion_actual": round(radiacion_actual, 1),
         "temp_media_proj_c": round(float(df_proj["temp_media_c"].mean()), 1),
     }
 
