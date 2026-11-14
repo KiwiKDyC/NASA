@@ -527,6 +527,8 @@ def construir_carta_gantt_html(secuencia_12m: dict) -> str:
     """Construye una Carta Gantt visual HTML/CSS responsiva de 12 Meses (Mes 1 a Mes 12)
     y 48 Semanas (S1, S2, S3, S4 por cada mes), rellenando cada bloque semanal activo
     con el emoji de la hortaliza y diferenciando Siembra, Crecimiento y Cosecha por color.
+    Nota: Se devuelve sin sangría de 4 espacios para que el parser Markdown de Streamlit
+    no lo interprete como bloque de código <pre><code>.
     """
     headers_meses = "".join(
         [f"<th class='month-th' colspan='4'>Mes {m}</th>" for m in range(1, 13)]
@@ -535,15 +537,15 @@ def construir_carta_gantt_html(secuencia_12m: dict) -> str:
         [f"<th class='week-th'>S{s}</th>" for _ in range(12) for s in range(1, 5)]
     )
 
-    filas_html = ""
+    filas_html = []
     for etapa in secuencia_12m["etapas"]:
         cultivo = etapa["cultivo"]
         icono = obtener_icono_cultivo(cultivo)
         familia = etapa["familia_botanica"]
-        celdas = ""
+        celdas = []
         for info_sem in etapa["semanas_48"]:
             if not info_sem["activa"]:
-                celdas += "<td class='gantt-cell gantt-empty'>·</td>"
+                celdas.append("<td class='gantt-cell gantt-empty'>·</td>")
             else:
                 fase = info_sem["fase"]
                 if fase == "Siembra":
@@ -552,52 +554,162 @@ def construir_carta_gantt_html(secuencia_12m: dict) -> str:
                     clase_f = "gantt-crecimiento"
                 else:
                     clase_f = "gantt-cosecha"
-                celdas += (
+                celdas.append(
                     f"<td class='gantt-cell {clase_f}' title='{cultivo} ({fase})'>{icono}</td>"
                 )
 
-        filas_html += f"""
-        <tr>
-            <td class='crop-label-td'>
-                {etapa['orden']}. {icono} {cultivo}<br>
-                <span style='font-size:0.72rem; font-weight:700; color:#5D4037;'>🌿 {familia} (S{etapa['semana_inicio']}–S{etapa['semana_fin']})</span>
-            </td>
-            {celdas}
-        </tr>
-        """
+        celdas_str = "".join(celdas)
+        filas_html.append(
+            f"<tr>"
+            f"<td class='crop-label-td'>"
+            f"{etapa['orden']}. {icono} {cultivo}<br>"
+            f"<span style='font-size:0.72rem; font-weight:700; color:#5D4037;'>🌿 {familia} (S{etapa['semana_inicio']}–S{etapa['semana_fin']})</span>"
+            f"</td>"
+            f"{celdas_str}"
+            f"</tr>"
+        )
 
-    leyenda_html = """
-    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-top:0.65rem; font-size:0.84rem; font-weight:700;">
-        <div style="display:flex; gap:0.9rem; flex-wrap:wrap;">
-            <span style="background:#E1F5FE; border:1.5px solid #4FC3F7; padding:3px 10px; border-radius:6px; color:#01579B;">💧 Azul = Siembra / Trasplante</span>
-            <span style="background:#E8F5E9; border:1.5px solid #81C784; padding:3px 10px; border-radius:6px; color:#1B5E20;">🌱 Verde = Crecimiento y Cobertura</span>
-            <span style="background:#FFF8E1; border:1.5px solid #FFB74D; padding:3px 10px; border-radius:6px; color:#E65100;">🌾 Dorado = Cosecha / Incorporación</span>
-        </div>
-        <div style="color:#2E7D32;">
-            ✅ <b>48 de 48 Semanas con Suelo Cubierto (0% Suelo Desnudo)</b>
-        </div>
-    </div>
-    """
+    filas_str = "".join(filas_html)
+    leyenda_html = (
+        "<div style='display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-top:0.65rem; font-size:0.84rem; font-weight:700;'>"
+        "<div style='display:flex; gap:0.9rem; flex-wrap:wrap;'>"
+        "<span style='background:#E1F5FE; border:1.5px solid #4FC3F7; padding:3px 10px; border-radius:6px; color:#01579B;'>💧 Azul = Siembra / Trasplante</span>"
+        "<span style='background:#E8F5E9; border:1.5px solid #81C784; padding:3px 10px; border-radius:6px; color:#1B5E20;'>🌱 Verde = Crecimiento y Cobertura</span>"
+        "<span style='background:#FFF8E1; border:1.5px solid #FFB74D; padding:3px 10px; border-radius:6px; color:#E65100;'>🌾 Dorado = Cosecha / Incorporación</span>"
+        "</div>"
+        "<div style='color:#2E7D32;'>✅ <b>48 de 48 Semanas con Suelo Cubierto (0% Suelo Desnudo)</b></div>"
+        "</div>"
+    )
+    return (
+        "<div class='gantt-wrapper'>"
+        "<table class='gantt-table'>"
+        "<thead>"
+        "<tr>"
+        "<th class='month-th' rowspan='2' style='min-width:170px;'>Cultivo en Rotación<br><span style='font-size:0.7rem;font-weight:600;'>(3 Familias Distintas)</span></th>"
+        f"{headers_meses}"
+        "</tr>"
+        f"<tr>{headers_semanas}</tr>"
+        "</thead>"
+        f"<tbody>{filas_str}</tbody>"
+        "</table>"
+        f"{leyenda_html}"
+        "</div>"
+    )
 
-    return f"""
-    <div class="gantt-wrapper">
-        <table class="gantt-table">
-            <thead>
-                <tr>
-                    <th class="month-th" rowspan="2" style="min-width:170px;">Cultivo en Rotación<br><span style="font-size:0.7rem;font-weight:600;">(3 Familias Distintas)</span></th>
-                    {headers_meses}
-                </tr>
-                <tr>
-                    {headers_semanas}
-                </tr>
-            </thead>
-            <tbody>
-                {filas_html}
-            </tbody>
-        </table>
-        {leyenda_html}
-    </div>
+
+def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
+    """Construye una matriz Carta Gantt interactiva en Plotly de 12 Meses (Mes 1 a Mes 12)
+    y 48 Semanas (S1..S4 por mes) con los emojis de cada hortaliza en cada celda activa.
     """
+    etapas = list(reversed(secuencia_12m["etapas"]))
+    etiquetas_y = [
+        f"<b>{e['orden']}. {obtener_icono_cultivo(e['cultivo'])} {e['cultivo']}</b><br><span style='font-size:11px;color:#5D4037'>{e['familia_botanica']}</span>"
+        for e in etapas
+    ]
+    semanas_x = list(range(1, 49))
+
+    z_matriz = []
+    texto_celdas = []
+    hover_celdas = []
+
+    for e in etapas:
+        icono = obtener_icono_cultivo(e["cultivo"])
+        fila_z = []
+        fila_txt = []
+        fila_hov = []
+        for idx_w, info_sem in enumerate(e["semanas_48"], start=1):
+            mes_num = ((idx_w - 1) // 4) + 1
+            sem_mes = ((idx_w - 1) % 4) + 1
+            if not info_sem["activa"]:
+                fila_z.append(0.0)
+                fila_txt.append("·")
+                fila_hov.append(f"Mes {mes_num} (S{sem_mes}) — Sin este cultivo")
+            else:
+                fase = info_sem["fase"]
+                if fase == "Siembra":
+                    fila_z.append(0.35)
+                elif fase == "Crecimiento":
+                    fila_z.append(0.70)
+                else:
+                    fila_z.append(1.0)
+                fila_txt.append(icono)
+                fila_hov.append(
+                    f"<b>{icono} {e['cultivo']}</b><br>Mes {mes_num} • Semana S{sem_mes} (Sem. {idx_w}/48)<br>Etapa: <b>{fase}</b>"
+                )
+        z_matriz.append(fila_z)
+        texto_celdas.append(fila_txt)
+        hover_celdas.append(fila_hov)
+
+    escala_colores = [
+        [0.0, "#F5F3EF"],
+        [0.15, "#F5F3EF"],
+        [0.35, "#B3E5FC"],
+        [0.70, "#C8E6C9"],
+        [1.0, "#FFE082"],
+    ]
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z_matriz,
+            x=semanas_x,
+            y=etiquetas_y,
+            text=texto_celdas,
+            texttemplate="%{text}",
+            textfont={"size": 15},
+            hoverinfo="text",
+            hovertext=hover_celdas,
+            colorscale=escala_colores,
+            zmin=0.0,
+            zmax=1.0,
+            showscale=False,
+            xgap=2,
+            ygap=6,
+        )
+    )
+
+    # Líneas divisorias verticales cada 4 semanas (Mes 1 a Mes 12) y títulos de Mes arriba
+    for m in range(1, 13):
+        centro_mes = (m - 1) * 4 + 2.5
+        fig.add_annotation(
+            x=centro_mes,
+            y=len(etapas) - 0.38,
+            text=f"<b>MES {m}</b>",
+            showarrow=False,
+            font=dict(size=11, color="#0B3D91", family="Arial Black"),
+            yref="y",
+        )
+        if m < 12:
+            fig.add_vline(
+                x=m * 4 + 0.5,
+                line_width=1.8,
+                line_dash="solid",
+                line_color="#8D6E63",
+            )
+
+    tick_vals = list(range(1, 49))
+    tick_texts = [f"S{((w - 1) % 4) + 1}" for w in tick_vals]
+
+    fig.update_layout(
+        height=255,
+        margin=dict(l=10, r=10, t=38, b=28),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        xaxis=dict(
+            tickmode="array",
+            tickvals=tick_vals,
+            ticktext=tick_texts,
+            tickfont=dict(size=9, color="#1C2819"),
+            title=dict(
+                text="<b>💧 Azul = Siembra/Trasplante   |   🌱 Verde = Crecimiento y Cobertura   |   🌾 Dorado = Cosecha   (48 Semanas = 0% Suelo Desnudo)</b>",
+                font=dict(size=12, color="#1B5E20"),
+            ),
+            range=[0.5, 48.5],
+        ),
+        yaxis=dict(
+            tickfont=dict(size=12, color="#1C2819"),
+        ),
+    )
+    return fig
 
 
 def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, zona: str) -> go.Figure:
@@ -945,7 +1057,9 @@ def main():
         '<div class="section-header header-earth">🗓️ Carta Gantt Visual de 12 Meses (48 Semanas Paso a Paso con Figuras)</div>',
         unsafe_allow_html=True,
     )
+    # Renderizamos tanto la tabla HTML compacta sin sangría como el gráfico interactivo Plotly para máxima compatibilidad
     st.markdown(construir_carta_gantt_html(sec_12m), unsafe_allow_html=True)
+    st.plotly_chart(construir_figura_gantt_plotly(sec_12m), use_container_width=True)
 
     # Conservamos intactas las 3 tarjetas comparativas de escenarios en un bloque desplegable limpio
     with st.expander("🔍 Ver Comparativa Detallada frente al Monocultivo y Otras Alternativas Individuales", expanded=False):
