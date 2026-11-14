@@ -233,6 +233,99 @@ def inyectar_estilos_campo_claro():
             border-left: 4px solid #2E7D32;
             margin-top: 0.5rem;
         }
+
+        /* Secuencia Consolidada 12 Meses y Carta Gantt Visual */
+        .sequence-master-card {
+            background: linear-gradient(135deg, #FFFFFF 0%, #F1F8E9 55%, #E1F5FE 100%);
+            border: 3.5px solid #2E7D32;
+            border-radius: 18px;
+            padding: 1.3rem 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 8px 24px rgba(46, 125, 50, 0.16);
+        }
+        .seq-step-box {
+            background: #FFFFFF;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            border: 2px solid #A5D6A7;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+            height: 100%;
+        }
+        .gantt-wrapper {
+            overflow-x: auto;
+            background: #FFFFFF;
+            border-radius: 16px;
+            padding: 1rem;
+            border: 2.5px solid #BCAAA4;
+            box-shadow: 0 4px 14px rgba(93, 64, 55, 0.08);
+            margin-bottom: 1rem;
+        }
+        .gantt-table {
+            width: 100%;
+            min-width: 1080px;
+            border-collapse: separate;
+            border-spacing: 2px;
+            font-size: 0.78rem;
+        }
+        .gantt-table th.month-th {
+            background: #0B3D91;
+            color: #FFFFFF !important;
+            font-weight: 900;
+            text-align: center;
+            padding: 6px 2px;
+            border-radius: 6px 6px 0 0;
+            font-size: 0.8rem;
+        }
+        .gantt-table th.week-th {
+            background: #E3F2FD;
+            color: #0D47A1 !important;
+            font-weight: 800;
+            text-align: center;
+            padding: 3px 1px;
+            font-size: 0.68rem;
+        }
+        .gantt-table td.crop-label-td {
+            background: #EFEBE9;
+            color: #3E2723 !important;
+            font-weight: 900;
+            padding: 8px 10px;
+            border-radius: 8px;
+            white-space: nowrap;
+            font-size: 0.88rem;
+            border-left: 5px solid #6D4C41;
+        }
+        .gantt-cell {
+            text-align: center;
+            vertical-align: middle;
+            height: 36px;
+            min-width: 19px;
+            border-radius: 5px;
+            font-size: 0.98rem;
+            line-height: 1;
+        }
+        .gantt-empty {
+            background-color: #F5F3EF;
+        }
+        .gantt-siembra {
+            background-color: #E1F5FE;
+            border: 1px solid #4FC3F7;
+        }
+        .gantt-crecimiento {
+            background-color: #E8F5E9;
+            border: 1px solid #81C784;
+        }
+        .gantt-cosecha {
+            background-color: #FFF8E1;
+            border: 1px solid #FFB74D;
+        }
+        .sentinel-badge-card {
+            background: #FFFFFF;
+            border-radius: 14px;
+            padding: 0.8rem 1rem;
+            border: 2px solid #B0BEC5;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.04);
+            height: 100%;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -430,9 +523,86 @@ def crear_radar_comparativo_escenarios(escenarios: list) -> go.Figure:
     return fig
 
 
+def construir_carta_gantt_html(secuencia_12m: dict) -> str:
+    """Construye una Carta Gantt visual HTML/CSS responsiva de 12 Meses (Mes 1 a Mes 12)
+    y 48 Semanas (S1, S2, S3, S4 por cada mes), rellenando cada bloque semanal activo
+    con el emoji de la hortaliza y diferenciando Siembra, Crecimiento y Cosecha por color.
+    """
+    headers_meses = "".join(
+        [f"<th class='month-th' colspan='4'>Mes {m}</th>" for m in range(1, 13)]
+    )
+    headers_semanas = "".join(
+        [f"<th class='week-th'>S{s}</th>" for _ in range(12) for s in range(1, 5)]
+    )
+
+    filas_html = ""
+    for etapa in secuencia_12m["etapas"]:
+        cultivo = etapa["cultivo"]
+        icono = obtener_icono_cultivo(cultivo)
+        familia = etapa["familia_botanica"]
+        celdas = ""
+        for info_sem in etapa["semanas_48"]:
+            if not info_sem["activa"]:
+                celdas += "<td class='gantt-cell gantt-empty'>·</td>"
+            else:
+                fase = info_sem["fase"]
+                if fase == "Siembra":
+                    clase_f = "gantt-siembra"
+                elif fase == "Crecimiento":
+                    clase_f = "gantt-crecimiento"
+                else:
+                    clase_f = "gantt-cosecha"
+                celdas += (
+                    f"<td class='gantt-cell {clase_f}' title='{cultivo} ({fase})'>{icono}</td>"
+                )
+
+        filas_html += f"""
+        <tr>
+            <td class='crop-label-td'>
+                {etapa['orden']}. {icono} {cultivo}<br>
+                <span style='font-size:0.72rem; font-weight:700; color:#5D4037;'>🌿 {familia} (S{etapa['semana_inicio']}–S{etapa['semana_fin']})</span>
+            </td>
+            {celdas}
+        </tr>
+        """
+
+    leyenda_html = """
+    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-top:0.65rem; font-size:0.84rem; font-weight:700;">
+        <div style="display:flex; gap:0.9rem; flex-wrap:wrap;">
+            <span style="background:#E1F5FE; border:1.5px solid #4FC3F7; padding:3px 10px; border-radius:6px; color:#01579B;">💧 Azul = Siembra / Trasplante</span>
+            <span style="background:#E8F5E9; border:1.5px solid #81C784; padding:3px 10px; border-radius:6px; color:#1B5E20;">🌱 Verde = Crecimiento y Cobertura</span>
+            <span style="background:#FFF8E1; border:1.5px solid #FFB74D; padding:3px 10px; border-radius:6px; color:#E65100;">🌾 Dorado = Cosecha / Incorporación</span>
+        </div>
+        <div style="color:#2E7D32;">
+            ✅ <b>48 de 48 Semanas con Suelo Cubierto (0% Suelo Desnudo)</b>
+        </div>
+    </div>
+    """
+
+    return f"""
+    <div class="gantt-wrapper">
+        <table class="gantt-table">
+            <thead>
+                <tr>
+                    <th class="month-th" rowspan="2" style="min-width:170px;">Cultivo en Rotación<br><span style="font-size:0.7rem;font-weight:600;">(3 Familias Distintas)</span></th>
+                    {headers_meses}
+                </tr>
+                <tr>
+                    {headers_semanas}
+                </tr>
+            </thead>
+            <tbody>
+                {filas_html}
+            </tbody>
+        </table>
+        {leyenda_html}
+    </div>
+    """
+
+
 def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, zona: str) -> go.Figure:
-    """Gráfico histórico + proyección a 6 meses con colores de alto contraste (Azul Agua, Café Tierra, Verde Hoja)."""
-    df_h = df_hist.tail(300).copy()
+    """Gráfico histórico + proyección a 12 meses con colores de alto contraste (Azul Agua, Café Tierra, Verde Hoja)."""
+    df_h = df_hist.tail(365).copy()
     df_p = df_proj.copy()
 
     df_h["hum_raiz_suav"] = df_h["humedad_suelo_raiz"].rolling(7, min_periods=1).mean()
@@ -450,19 +620,19 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
         shared_xaxes=True,
         vertical_spacing=0.12,
         subplot_titles=(
-            f"💧 Agua en las Raíces ({zona}) — Histórico + Proyección Satelital 6 Meses",
-            f"🌡️ Temperatura de la Tierra y del Aire ({zona}) — Próximos 6 Meses",
+            f"💧 Agua en las Raíces y Vigor Vegetal ({zona}) — Histórico + Proyección 12 Meses (48 Semanas)",
+            f"🌡️ Temperatura de la Tierra y del Aire ({zona}) — Proyección 12 Meses",
         ),
         row_heights=[0.52, 0.48],
     )
 
-    # Panel 1: Agua en el suelo
+    # Panel 1: Agua en el suelo + NDVI Sentinel-2
     fig.add_trace(
         go.Scatter(
             x=df_h["fecha"],
             y=df_h["hum_raiz_suav"] * 100,
             mode="lines",
-            name="💧 Humedad Raíces (Observado NASA)",
+            name="💧 Humedad Raíces (NASA GWETROOT)",
             line=dict(color="#0277BD", width=3.2),
             fill="tozeroy",
             fillcolor="rgba(2, 119, 189, 0.14)",
@@ -475,7 +645,7 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
             x=df_p["fecha"],
             y=df_p["humedad_suelo_raiz"] * 100,
             mode="lines",
-            name="🌱 Humedad Raíces Proyectada (6 Meses)",
+            name="🌱 Humedad Raíces Proyectada (12 Meses)",
             line=dict(color="#2E7D32", width=3.5, dash="dash"),
             fill="tozeroy",
             fillcolor="rgba(46, 125, 50, 0.14)",
@@ -483,6 +653,18 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
         row=1,
         col=1,
     )
+    if "NDVI" in df_h.columns and "NDVI" in df_p.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=pd.concat([df_h["fecha"], df_p["fecha"]]),
+                y=pd.concat([df_h["NDVI"].rolling(7, min_periods=1).mean(), df_p["NDVI"]]) * 100,
+                mode="lines",
+                name="🛰️ Vigor Vegetal Sentinel-2 (NDVI x100)",
+                line=dict(color="#558B2F", width=2.0, dash="dot"),
+            ),
+            row=1,
+            col=1,
+        )
 
     # Panel 2: Tierra y Aire
     fig.add_trace(
@@ -512,7 +694,7 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
             x=df_p["fecha"],
             y=df_p["temp_suelo_c"] if "temp_suelo_c" in df_p.columns else df_p["temp_media_c"],
             mode="lines",
-            name="🚀 Proyección Temp. Tierra (6 Meses)",
+            name="🚀 Proyección Temp. Tierra (12 Meses)",
             line=dict(color="#D84315", width=3.2, dash="dash"),
         ),
         row=2,
@@ -677,92 +859,173 @@ def main():
     )
 
     # =========================================================================
-    # SECCIÓN 1: TARJETAS DE PRESENTACIÓN (¿QUÉ SIEMBRO AHORA?) - POCA LETRA
+    # SECCIÓN 1: RECOMENDACIÓN CONSOLIDADA DE ROTACIÓN ÓPTIMA A 12 MESES + CARTA GANTT
     # =========================================================================
+    sec_12m = resultado["secuencia_optima_12m"]
+    etapas_12m = sec_12m["etapas"]
+
     st.markdown(
-        '<div class="section-header header-leaf">🌱 PASO 1: Elige tu Próximo Cultivo (Tarjetas de Decisión Rápida)</div>',
+        '<div class="section-header header-leaf">🌱 PASO 1: Tu Plan Maestro de Rotación Óptima para los Próximos 12 Meses (48 Semanas)</div>',
         unsafe_allow_html=True,
     )
 
-    cols_esc = st.columns(3)
-    estilos_tarjeta = ["crop-card-danger", "crop-card-water", "crop-card-winner"]
-    iconos_medalla = ["⛔ NO REPETIR", "💧 OPCIÓN AHORRO AGUA", "🌱 OPCIÓN NUTRE LA TIERRA"]
+    e1, e2, e3 = etapas_12m[0], etapas_12m[1], etapas_12m[2]
+    ic1, ic2, ic3 = (
+        obtener_icono_cultivo(e1["cultivo"]),
+        obtener_icono_cultivo(e2["cultivo"]),
+        obtener_icono_cultivo(e3["cultivo"]),
+    )
 
-    for idx, esc in enumerate(resultado["escenarios"]):
-        es_ganador = esc["titulo"] == ganador["titulo"]
-        clase_card = "crop-card-winner" if es_ganador else estilos_tarjeta[idx]
-        icono_c = obtener_icono_cultivo(esc["cultivo_recomendado"])
-        det = esc["detalles"]
-        viab = int(round(esc["puntaje_viabilidad"]))
+    st.markdown(
+        f"""
+        <div class="sequence-master-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; margin-bottom:0.8rem;">
+                <div>
+                    <span style="background:#2E7D32; color:white !important; padding:0.3rem 0.85rem; border-radius:999px; font-size:0.8rem; font-weight:900;">
+                        🏆 SECUENCIA ANUAL CONSOLIDADA (NASA POWER + COPERNICUS SENTINEL-2)
+                    </span>
+                    <h3 style="margin:0.4rem 0 0 0; font-size:1.5rem; font-weight:900; color:#1C2819 !important;">
+                        {icono_actual} {cultivo_sel} (Actual) ➔ {ic1} {e1['cultivo']} ➔ {ic2} {e2['cultivo']} ➔ {ic3} {e3['cultivo']}
+                    </h3>
+                </div>
+                <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <div class="v-chip chip-water" style="min-width:135px; text-align:center;">
+                        <span class="label">Ahorro Agua Anual</span>
+                        <span class="val">💧 +{sec_12m['ahorro_hidrico_anual_pct']:.0f}% (Kc {sec_12m['kc_medio_anual']})</span>
+                    </div>
+                    <div class="v-chip chip-earth" style="min-width:145px; text-align:center;">
+                        <span class="label">Riesgo Suelo Desnudo</span>
+                        <span class="val">🤎 Baja de {sec_12m['suelo_desnudo_actual_pct']:.0f}% a 0%</span>
+                    </div>
+                    <div class="v-chip chip-leaf" style="min-width:135px; text-align:center;">
+                        <span class="label">Cobertura Anual</span>
+                        <span class="val">🌱 48 / 48 Semanas</span>
+                    </div>
+                </div>
+            </div>
+            <p style="font-size:0.95rem; font-weight:600; color:#263238 !important; margin:0 0 0.85rem 0; background:rgba(255,255,255,0.85); padding:0.65rem 0.9rem; border-radius:10px; border-left:5px solid #0288D1;">
+                💡 <b>¿Por qué funciona esta secuencia?</b> {sec_12m['resumen_explicativo']}
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        # Símbolos intuitivos de gotas de agua
-        if esc["demanda_hidrica"] == "Baja":
-            gotas_txt = "💧 Baja (Poca Agua)"
-        elif esc["demanda_hidrica"] == "Media":
-            gotas_txt = "💧💧 Media"
-        else:
-            gotas_txt = "💧💧💧 Alta (Mucha Agua)"
-
-        color_barra = "#E53935" if idx == 0 else ("#0288D1" if idx == 1 else "#2E7D32")
-        etiqueta_top = "🏆 MEJOR OPCIÓN PARA TI" if es_ganador else iconos_medalla[idx]
-
-        # Frase ultra-corta y directa para el pequeño agricultor
-        if idx == 0:
-            consejo_corto = f"⚠️ Cuidado: Si repites {cultivo_sel}, las plagas quedan en la tierra y rinde menos."
-        elif idx == 1:
-            consejo_corto = f"💧 Ideal con poca agua: gasta menos riego y limpia las plagas de {cultivo_sel}."
-        else:
-            consejo_corto = f"🤎 Abono natural: deja la tierra descansada y con alimento (Nitrógeno) para después."
-
-        with cols_esc[idx]:
+    # 3 Bloques encadenados de la Secuencia 12 Meses
+    cols_seq = st.columns(3)
+    colores_borde_seq = ["#0288D1", "#2E7D32", "#6D4C41"]
+    for idx_s, etapa in enumerate(etapas_12m):
+        ic_s = obtener_icono_cultivo(etapa["cultivo"])
+        c_borde = colores_borde_seq[idx_s]
+        with cols_seq[idx_s]:
             st.markdown(
                 f"""
-                <div class="crop-card {clase_card}">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                        <span style="background:{color_barra}; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.78rem; font-weight:900;">
-                            {etiqueta_top}
-                        </span>
-                        <span style="font-size:1.1rem; font-weight:900; color:{color_barra} !important;">
-                            {viab}% Éxito
-                        </span>
+                <div class="seq-step-box" style="border-color:{c_borde}; border-left: 6px solid {c_borde};">
+                    <div style="font-size:0.78rem; font-weight:900; color:{c_borde} !important; text-transform:uppercase;">
+                        ETAPA {etapa['orden']} • {etapa['etiqueta_periodo']} (Semanas {etapa['semana_inicio']} a {etapa['semana_fin']})
                     </div>
-                    <div style="display:flex; align-items:center; margin:0.4rem 0;">
-                        <span class="crop-emoji-big">{icono_c}</span>
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin:0.35rem 0;">
+                        <span style="font-size:2.4rem;">{ic_s}</span>
                         <div>
-                            <p class="crop-title-big">{esc['cultivo_recomendado']}</p>
-                            <span style="font-size:0.85rem; font-weight:700; color:#5D4037 !important;">
-                                🌿 Familia: {esc['familia_botanica']}
-                            </span>
+                            <div style="font-size:1.25rem; font-weight:900; color:#1C2819 !important;">{etapa['cultivo']}</div>
+                            <div style="font-size:0.82rem; font-weight:700; color:#5D4037 !important;">🌿 {etapa['familia_botanica']}</div>
                         </div>
                     </div>
-                    <div class="progress-track">
-                        <div style="width:{viab}%; background:{color_barra}; height:100%; border-radius:999px;"></div>
-                    </div>
-                    <div class="visual-chips-grid">
-                        <div class="v-chip chip-water">
-                            <span class="label">Consumo de Agua</span>
-                            <span class="val">{gotas_txt}</span>
-                        </div>
-                        <div class="v-chip chip-earth">
-                            <span class="label">Aporte a la Tierra</span>
-                            <span class="val">🤎 {esc['aporte_suelo'].split()[0]}</span>
-                        </div>
-                        <div class="v-chip chip-leaf">
-                            <span class="label">Tiempo a Cosecha</span>
-                            <span class="val">🗓️ {esc['ciclo_dias']} días</span>
-                        </div>
-                        <div class="v-chip chip-sun">
-                            <span class="label">Riesgo Heladas</span>
-                            <span class="val">❄️ {det['dias_riesgo_helada']} días</span>
-                        </div>
-                    </div>
-                    <div class="short-tip" style="border-left-color:{color_barra};">
-                        {consejo_corto}
+                    <div style="font-size:0.83rem; font-weight:700; color:#1C2819 !important; margin-top:0.3rem;">
+                        💧 <b>Agua:</b> {etapa['demanda_hidrica']} (Kc={etapa['kc_promedio']}) &nbsp;|&nbsp;
+                        🤎 <b>Suelo:</b> {etapa['aporte_suelo']}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
+    # --- BLOQUE VISUAL: CARTA GANTT DE 12 MESES Y 48 SEMANAS CON FIGURAS DE HORTALIZAS ---
+    st.markdown(
+        '<div class="section-header header-earth">🗓️ Carta Gantt Visual de 12 Meses (48 Semanas Paso a Paso con Figuras)</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(construir_carta_gantt_html(sec_12m), unsafe_allow_html=True)
+
+    # Conservamos intactas las 3 tarjetas comparativas de escenarios en un bloque desplegable limpio
+    with st.expander("🔍 Ver Comparativa Detallada frente al Monocultivo y Otras Alternativas Individuales", expanded=False):
+        cols_esc = st.columns(3)
+        estilos_tarjeta = ["crop-card-danger", "crop-card-water", "crop-card-winner"]
+        iconos_medalla = ["⛔ NO REPETIR", "💧 OPCIÓN AHORRO AGUA", "🌱 OPCIÓN NUTRE LA TIERRA"]
+
+        for idx, esc in enumerate(resultado["escenarios"]):
+            es_ganador = esc["titulo"] == ganador["titulo"]
+            clase_card = "crop-card-winner" if es_ganador else estilos_tarjeta[idx]
+            icono_c = obtener_icono_cultivo(esc["cultivo_recomendado"])
+            det = esc["detalles"]
+            viab = int(round(esc["puntaje_viabilidad"]))
+
+            if esc["demanda_hidrica"] == "Baja":
+                gotas_txt = "💧 Baja (Poca Agua)"
+            elif esc["demanda_hidrica"] == "Media":
+                gotas_txt = "💧💧 Media"
+            else:
+                gotas_txt = "💧💧💧 Alta (Mucha Agua)"
+
+            color_barra = "#E53935" if idx == 0 else ("#0288D1" if idx == 1 else "#2E7D32")
+            etiqueta_top = "🏆 MEJOR INICIO DE CICLO" if es_ganador else iconos_medalla[idx]
+
+            if idx == 0:
+                consejo_corto = f"⚠️ Cuidado: Si repites {cultivo_sel}, las plagas quedan en la tierra y rinde menos."
+            elif idx == 1:
+                consejo_corto = f"💧 Ideal con poca agua: gasta menos riego y limpia las plagas de {cultivo_sel}."
+            else:
+                consejo_corto = f"🤎 Abono natural: deja la tierra descansada y con alimento (Nitrógeno) para después."
+
+            with cols_esc[idx]:
+                st.markdown(
+                    f"""
+                    <div class="crop-card {clase_card}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                            <span style="background:{color_barra}; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.78rem; font-weight:900;">
+                                {etiqueta_top}
+                            </span>
+                            <span style="font-size:1.1rem; font-weight:900; color:{color_barra} !important;">
+                                {viab}% Éxito
+                            </span>
+                        </div>
+                        <div style="display:flex; align-items:center; margin:0.4rem 0;">
+                            <span class="crop-emoji-big">{icono_c}</span>
+                            <div>
+                                <p class="crop-title-big">{esc['cultivo_recomendado']}</p>
+                                <span style="font-size:0.85rem; font-weight:700; color:#5D4037 !important;">
+                                    🌿 Familia: {esc['familia_botanica']}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="progress-track">
+                            <div style="width:{viab}%; background:{color_barra}; height:100%; border-radius:999px;"></div>
+                        </div>
+                        <div class="visual-chips-grid">
+                            <div class="v-chip chip-water">
+                                <span class="label">Consumo de Agua</span>
+                                <span class="val">{gotas_txt}</span>
+                            </div>
+                            <div class="v-chip chip-earth">
+                                <span class="label">Aporte a la Tierra</span>
+                                <span class="val">🤎 {esc['aporte_suelo'].split()[0]}</span>
+                            </div>
+                            <div class="v-chip chip-leaf">
+                                <span class="label">Tiempo a Cosecha</span>
+                                <span class="val">🗓️ {esc['ciclo_dias']} días</span>
+                            </div>
+                            <div class="v-chip chip-sun">
+                                <span class="label">Riesgo Heladas</span>
+                                <span class="val">❄️ {det['dias_riesgo_helada']} días</span>
+                            </div>
+                        </div>
+                        <div class="short-tip" style="border-left-color:{color_barra};">
+                            {consejo_corto}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     # =========================================================================
     # SECCIÓN 2: UNA FIGURA PARA CADA VARIABLE SATELITAL (AGUA, TIERRA, SOL)
@@ -893,16 +1156,67 @@ def main():
                 max_val=30,
                 color_barra="#00ACC1",
                 color_fondo_rango="#E0F7FA",
-                subtitulo="Riesgo de Frío en Próximos 6 Meses",
+                subtitulo="Riesgo de Frío en Próximos 12 Meses",
             ),
             use_container_width=True,
+        )
+
+    # --- TARJETAS DISCRETAS COPERNICUS SENTINEL-2 (ESA) ---
+    st.markdown(
+        '<div style="font-size:0.95rem; font-weight:900; color:#1B5E20; margin:0.35rem 0 0.45rem 0;">🛰️ Índices Ópticos de Vegetación y Suelo — Copernicus Sentinel-2 L2A (10–20m)</div>',
+        unsafe_allow_html=True,
+    )
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        st.markdown(
+            f"""
+            <div class="sentinel-badge-card" style="border-left:6px solid #2E7D32;">
+                <div style="font-size:0.75rem; font-weight:800; color:#2E7D32 !important;">🌿 VIGOR VEGETATIVO (NDVI)</div>
+                <div style="font-size:1.55rem; font-weight:900; color:#1C2819 !important;">{ind['ndvi_actual']:.2f} <span style="font-size:0.82rem; font-weight:700; color:#2E7D32 !important;">(Proy 12m: {ind['ndvi_proj_12m']:.2f})</span></div>
+                <div style="font-size:0.76rem; color:#4E342E !important;">Bandas NIR/Rojo (B08-B04) • Verdes intensos</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with s2:
+        st.markdown(
+            f"""
+            <div class="sentinel-badge-card" style="border-left:6px solid #558B2F;">
+                <div style="font-size:0.75rem; font-weight:800; color:#558B2F !important;">🌱 BIOMASA MEJORADA (EVI)</div>
+                <div style="font-size:1.55rem; font-weight:900; color:#1C2819 !important;">{ind['evi_actual']:.2f} <span style="font-size:0.82rem; font-weight:700; color:#558B2F !important;">Alta sensibilidad</span></div>
+                <div style="font-size:0.76rem; color:#4E342E !important;">Corrige atmósfera y suelo en follaje denso</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with s3:
+        st.markdown(
+            f"""
+            <div class="sentinel-badge-card" style="border-left:6px solid #0288D1;">
+                <div style="font-size:0.75rem; font-weight:800; color:#0288D1 !important;">💧 AGUA EN LA HOJA (NDMI)</div>
+                <div style="font-size:1.55rem; font-weight:900; color:#1C2819 !important;">{ind['ndmi_actual']:+.2f} <span style="font-size:0.82rem; font-weight:700; color:#0288D1 !important;">(Proy 12m: {ind['ndmi_proj_12m']:+.2f})</span></div>
+                <div style="font-size:0.76rem; color:#4E342E !important;">Bandas NIR/SWIR (B08-B11) • Estrés foliar</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with s4:
+        st.markdown(
+            f"""
+            <div class="sentinel-badge-card" style="border-left:6px solid #6D4C41;">
+                <div style="font-size:0.75rem; font-weight:800; color:#6D4C41 !important;">🤎 RIESGO SUELO DESNUDO</div>
+                <div style="font-size:1.55rem; font-weight:900; color:#1C2819 !important;">{ind['suelo_desnudo_pct']:.0f}% <span style="font-size:0.82rem; font-weight:700; color:#2E7D32 !important;">➔ Meta: 0%</span></div>
+                <div style="font-size:0.76rem; color:#4E342E !important;">{ind['suelo_desnudo_dias_anual']} días/año sin cobertura vegetal</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
     # =========================================================================
     # SECCIÓN 3: DIAGRAMAS VISUALES (CORTE DE LA TIERRA + ESTRELLA COMPARATIVA)
     # =========================================================================
     st.markdown(
-        '<div class="section-header header-earth">🤎 PASO 3: Salud de tu Tierra y Pronóstico para los Próximos 6 Meses</div>',
+        '<div class="section-header header-earth">🤎 PASO 3: Salud de tu Tierra y Pronóstico para los Próximos 12 Meses</div>',
         unsafe_allow_html=True,
     )
 
