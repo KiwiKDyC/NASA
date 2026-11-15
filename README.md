@@ -71,29 +71,3 @@ streamlit run app.py
 | `GWETROOT` | `humedad_suelo_raiz` | Humedad de suelo en zona radicular 0–100 cm (fracción 0–1) |
 | `GWETPROF` | `humedad_suelo_prof` | Humedad en perfil completo de suelo (fracción 0–1) |
 | `ALLSKY_SFC_SW_DWN` | `radiacion_solar` | Radiación solar de onda corta incidente |
-
----
-
-## 🤝 Flujo de Trabajo Colaborativo en Git (Recomendado para la Hackathon)
-
-Para evitar conflictos de código (`merge conflicts`) durante la hackathon:
-
-1. **Actualizar siempre antes de empezar un cambio:**
-   ```bash
-   git pull origin main
-   ```
-2. **Trabajar en ramas por funcionalidad (opcional pero seguro):**
-   ```bash
-   git checkout -b feat/mejora-interfaz
-   ```
-3. **Guardar y subir cambios:**
-   ```bash
-   git add .
-   git commit -m "feat: descripción clara del cambio"
-   git push -u origin feat/mejora-interfaz
-   ```
-4. **División de responsabilidades por archivo:**
-   - **Frontend / UI / UX:** editar `app.py`
-   - **Ciencia de Datos / Reglas de Negocio:** editar `modelo_rotacion.py`
-   - **Datos Agronómicos / Nuevos Cultivos:** editar `crear_base_hortalizas.py` y ejecutar `python crear_base_hortalizas.py`
-   - **Ingesta NASA POWER / Nuevas Comunas:** editar `descargar_datos.py` y ejecutar `python descargar_datos.py`
