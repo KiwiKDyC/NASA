@@ -635,49 +635,102 @@ def crear_figuras_cuenta_corriente_n_y_agua(cuenta: dict, cultivo_actual: str) -
     ]
     flujos_n = [m["flujo_n_kg_ha"] for m in movs]
     saldos_acum = [m["saldo_n_acum_kg_ha"] for m in movs]
-    colores_n = ["#2E7D32" if v >= 0 else "#C62828" for v in flujos_n]
-    textos_barras = [f"<b>{v:+} kg N/ha</b>" for v in flujos_n]
 
     fig_n = go.Figure()
+
+    # Separar las barras en 2 trazas (Aporte positivo vs Extracción negativa) para que la leyenda sea clara y con su color real
+    y_pos = [v if v >= 0 else None for v in flujos_n]
+    txt_pos = [f"<b>{v:+} kg N/ha</b>" if v >= 0 else "" for v in flujos_n]
+    y_neg = [v if v < 0 else None for v in flujos_n]
+    txt_neg = [f"<b>{v:+} kg N/ha</b>" if v < 0 else "" for v in flujos_n]
+
     fig_n.add_trace(
         go.Bar(
             x=eje_x_etiquetas,
-            y=flujos_n,
+            y=y_pos,
             width=0.42,
-            marker=dict(color=colores_n, line=dict(color="#1C2819", width=1.5), opacity=0.88),
-            text=textos_barras,
+            marker=dict(color="#2E7D32", line=dict(color="#1C2819", width=1.5), opacity=0.90),
+            text=txt_pos,
             textposition="inside",
             insidetextanchor="middle",
             textfont=dict(size=13, color="#FFFFFF", family="Arial Black"),
-            name="📊 Aporte (+) o Consumo (-) de cada Cultivo (Barras)",
-            hovertemplate="%{x}<br><b>Flujo del cultivo: %{y:+} kg N/ha</b><extra></extra>",
+            name="🟢 Aporte de Nitrógeno (+kg N/ha)",
+            hovertemplate="%{x}<br><b>Aporte del cultivo: %{y:+} kg N/ha</b><extra></extra>",
         )
     )
 
-    # Posicionar las etiquetas del saldo acumulado arriba/abajo para que jamás toquen las barras
-    posiciones_linea = ["top center" if s >= 0 else "bottom center" for s in saldos_acum]
+    fig_n.add_trace(
+        go.Bar(
+            x=eje_x_etiquetas,
+            y=y_neg,
+            width=0.42,
+            marker=dict(color="#C62828", line=dict(color="#1C2819", width=1.5), opacity=0.90),
+            text=txt_neg,
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(size=13, color="#FFFFFF", family="Arial Black"),
+            name="🔴 Consumo del Cultivo (-kg N/ha)",
+            hovertemplate="%{x}<br><b>Consumo del cultivo: %{y:+} kg N/ha</b><extra></extra>",
+        )
+    )
+
+    # Línea de saldo acumulado (sin texto directo en la traza para que la línea jamás tape el texto)
     fig_n.add_trace(
         go.Scatter(
             x=eje_x_etiquetas,
             y=saldos_acum,
-            mode="lines+markers+text",
-            name="📈 Nitrógeno Acumulado en la Tierra a lo largo del tiempo (Línea Azul)",
+            mode="lines+markers",
+            name="📈 Saldo Acumulado en la Tierra (kg N/ha)",
             line=dict(color="#0B3D91", width=4),
-            marker=dict(size=12, color="#FFC107", line=dict(color="#0B3D91", width=2.5)),
-            text=[f"<b>Acumulado: {s:+} kg N</b>" for s in saldos_acum],
-            textposition=posiciones_linea,
-            textfont=dict(size=12, color="#0B3D91", family="Arial Black"),
+            marker=dict(size=13, color="#FFC107", line=dict(color="#0B3D91", width=2.5)),
             hovertemplate="%{x}<br><b>Saldo Acumulado en el Suelo: %{y:+} kg N/ha</b><extra></extra>",
         )
     )
 
+    # Etiquetas de Saldo Acumulado en capa superior (annotations con fondo opaco #FFFDE7 y flecha desplazada)
+    # para que NUNCA sean tapadas por la línea azul ni choquen con el texto interior de las barras
+    for idx_m, (x_lbl, f_val, s_val) in enumerate(zip(eje_x_etiquetas, flujos_n, saldos_acum)):
+        if s_val >= 0:
+            # Si la barra positiva supera al acumulado, desplazamos hacia abajo; de lo contrario hacia arriba en espacio libre
+            ay_offset = -34 if s_val >= f_val else 34
+        else:
+            # Si el acumulado es negativo pero está dentro de la parte alta de una barra negativa grande (ej. s=-30, f=-120),
+            # apuntamos la etiqueta hacia arriba (sobre la línea 0 en espacio libre); si está al fondo, hacia abajo
+            if f_val < 0 and s_val > f_val and abs(s_val) < abs(f_val) * 0.75:
+                ay_offset = -44
+            else:
+                ay_offset = 34
+
+        fig_n.add_annotation(
+            x=x_lbl,
+            y=s_val,
+            text=f"<b>Acum: {s_val:+} kg N</b>",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=2,
+            arrowcolor="#0B3D91",
+            ax=0,
+            ay=ay_offset,
+            bgcolor="#FFFDE7",
+            bordercolor="#0B3D91",
+            borderwidth=2,
+            borderpad=4,
+            font=dict(size=12, color="#0B3D91", family="Arial Black"),
+        )
+
     fig_n.add_hline(y=0, line_width=2, line_color="#5D4037", line_dash="dash")
-    max_val_y = max(160, max(abs(v) for v in flujos_n + saldos_acum) + 65)
+    max_val_y = max(175, max(abs(v) for v in flujos_n + saldos_acum) + 85)
 
     fig_n.update_layout(
+        barmode="overlay",
         title=dict(
-            text="<b>🧪 Evolución del Nitrógeno en tu Tierra por Temporada (Aporte de cada Cultivo y Acumulación Total)</b>",
+            text="<b>🧪 Evolución del Nitrógeno en tu Tierra por Temporada (Aporte por Cultivo y Saldo Acumulado)</b>",
             font=dict(size=16, color="#1B5E20"),
+            x=0.01,
+            xanchor="left",
+            y=0.96,
+            yanchor="top",
         ),
         yaxis=dict(
             title=dict(text="<b>Nitrógeno en el Suelo (kg N / ha)</b>", font=dict(size=13, color="#1C2819")),
@@ -693,81 +746,110 @@ def crear_figuras_cuenta_corriente_n_y_agua(cuenta: dict, cultivo_actual: str) -
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.03,
+            y=1.04,
             xanchor="center",
             x=0.5,
-            bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#C8E6C9",
+            bgcolor="#F1F8E9",
+            bordercolor="#2E7D32",
             borderwidth=1.5,
-            font=dict(size=12, color="#1C2819"),
+            font=dict(size=12.5, color="#1C2819"),
         ),
-        height=430,
-        margin=dict(l=30, r=30, t=78, b=45),
+        height=465,
+        margin=dict(l=40, r=30, t=105, b=45),
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FBF9F5",
         font=dict(color="#1C2819"),
     )
 
-    # Gráfico 2: Consumo y Ahorro de Agua en 2 Años (100% amigable, sin fórmulas técnicas)
-    escenarios_agua = [
-        f"<b>Si repites {cultivo_actual} (Monocultivo 2 Años)</b>",
-        "<b>Con tu Plan de Rotación de 2 Años</b>",
-    ]
-    valores_agua = [cuenta["agua_monocultivo_m3_ha"], cuenta["agua_rotacion_m3_ha"]]
+    # Gráfico 2: Consumo y Ahorro de Agua en 2 Años (con 3ra barra dedicada de AGUA AHORRADA y sello visual llamativo)
+    agua_mono = cuenta["agua_monocultivo_m3_ha"]
+    agua_rot = cuenta["agua_rotacion_m3_ha"]
     ahorro_m3 = cuenta["ahorro_agua_m3_ha"]
     red_pct = cuenta["reduccion_agua_pct"]
+    litros_ahorrados = ahorro_m3 * 1000
+    camiones_aljibe = max(1, int(round(litros_ahorrados / 10000.0)))
+
+    escenarios_agua = [
+        f"<b>1. Repetir {cultivo_actual} (Monocultivo)</b><br><span style='font-size:11px;color:#B71C1C'>Mayor gasto hídrico</span>",
+        "<b>2. Tu Plan de Rotación (2 Años)</b><br><span style='font-size:11px;color:#01579B'>Consumo optimizado</span>",
+        "<b>3. 🌟 AGUA TOTAL AHORRADA</b><br><span style='font-size:11px;color:#1B5E20'>Agua que NO gastas en 2 años</span>",
+    ]
+    valores_agua = [agua_mono, agua_rot, ahorro_m3]
 
     fig_agua = go.Figure()
     fig_agua.add_trace(
         go.Bar(
             x=escenarios_agua,
             y=valores_agua,
-            width=0.45,
-            marker=dict(color=["#E53935", "#0288D1"], line=dict(color="#1C2819", width=1.5)),
+            width=0.46,
+            marker=dict(
+                color=["#E53935", "#0288D1", "#00897B"],
+                line=dict(color=["#B71C1C", "#01579B", "#004D40"], width=2.2),
+            ),
             text=[
-                f"<b>{valores_agua[0]:,} m³ / ha</b><br>Alto gasto de agua".replace(",", "."),
-                f"<b>{valores_agua[1]:,} m³ / ha</b><br>Uso eficiente del agua".replace(",", "."),
+                f"<b>{agua_mono:,} m³/ha</b><br>Gasto en monocultivo".replace(",", "."),
+                f"<b>{agua_rot:,} m³/ha</b><br>Con tu rotación (-{red_pct:.1f}%)".replace(",", "."),
+                f"<b>💧 ¡AHORRAS {ahorro_m3:,} m³/ha!</b><br>({litros_ahorrados:,} Litros/ha)".replace(",", "."),
             ],
-            textposition="inside",
+            textposition=["inside", "inside", "outside"],
             insidetextanchor="middle",
-            textfont=dict(size=14, color="#FFFFFF", family="Arial Black"),
-            name="Agua Total en 2 Años",
+            textfont=dict(
+                size=[14, 14, 15],
+                color=["#FFFFFF", "#FFFFFF", "#004D40"],
+                family="Arial Black",
+            ),
+            name="Agua en 2 Años",
+            hovertemplate="%{x}<br><b>%{y:,} m³/ha</b><extra></extra>",
         )
     )
 
+    # Línea punteada desde el tope del monocultivo para evidenciar visualmente la brecha ahorrada
+    fig_agua.add_hline(
+        y=agua_mono,
+        line_width=2,
+        line_dash="dot",
+        line_color="#E53935",
+        annotation_text=f"<b>Tope Monocultivo: {agua_mono:,} m³/ha</b>".replace(",", "."),
+        annotation_position="top left",
+        annotation_font=dict(size=11.5, color="#B71C1C"),
+    )
+
+    # Gran cartel central/superior destacando el ahorro de agua de forma muy llamativa
     fig_agua.add_annotation(
-        x=1,
-        y=valores_agua[1] + max(valores_agua) * 0.14,
+        x=1.5,
+        y=agua_mono * 0.86,
         text=(
-            f"<b>💧 AHORRAS {red_pct:.1f}% DE AGUA EN 2 AÑOS</b><br>"
-            f"<b>({ahorro_m3:,} m³ menos de agua por hectárea)</b>".replace(",", ".")
+            f"<b>💧 ¡AHORRO HÍDRICO DESTACADO: {ahorro_m3:,} m³ / ha MENOS! (-{red_pct:.1f}%)</b><br>"
+            f"<span style='font-size:12.5px'>Equivale a ahorrar <b>{litros_ahorrados:,} Litros/ha</b> (~<b>{camiones_aljibe} camiones aljibe</b> de 10.000 L)</span>".replace(",", ".")
         ),
         showarrow=True,
         arrowhead=2,
-        arrowcolor="#01579B",
-        ax=0,
-        ay=-28,
-        bgcolor="#E1F5FE",
-        bordercolor="#0288D1",
-        borderwidth=2,
-        borderpad=8,
-        font=dict(size=13, color="#01579B"),
+        arrowsize=1.2,
+        arrowwidth=2.5,
+        arrowcolor="#00695C",
+        ax=-40,
+        ay=-25,
+        bgcolor="#E0F2F1",
+        bordercolor="#00897B",
+        borderwidth=2.5,
+        borderpad=9,
+        font=dict(size=13.5, color="#004D40"),
     )
 
     fig_agua.update_layout(
         title=dict(
-            text=f"<b>💧 Comparación de Agua Total Utilizada en 2 Años — Ahorras {ahorro_m3:,} m³/ha (-{red_pct:.1f}%)</b>".replace(",", "."),
+            text=f"<b>💧 Agua Utilizada vs. Agua Ahorrada en 2 Años — ¡Ahorras {ahorro_m3:,} m³/ha (-{red_pct:.1f}%)!</b>".replace(",", "."),
             font=dict(size=16, color="#01579B"),
         ),
         yaxis=dict(
-            title=dict(text="<b>Agua Utilizada en 2 Años (m³ / ha)</b>", font=dict(size=13, color="#1C2819")),
-            range=[0, max(valores_agua) * 1.32],
+            title=dict(text="<b>Volumen de Agua en 2 Años (m³ / ha)</b>", font=dict(size=13, color="#1C2819")),
+            range=[0, agua_mono * 1.28],
             gridcolor="#E0E0E0",
             tickfont=dict(color="#1C2819", size=12),
         ),
         xaxis=dict(tickfont=dict(color="#1C2819", size=13)),
-        height=370,
-        margin=dict(l=30, r=30, t=68, b=35),
+        height=405,
+        margin=dict(l=40, r=30, t=68, b=40),
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FBF9F5",
         showlegend=False,
@@ -1453,13 +1535,17 @@ def main():
     extra_parcela_txt = ""
     if ficha_auto.get("area_ha"):
         area_val = float(ficha_auto["area_ha"])
+        n_tot = f"{int(round(cuenta['ganancia_neta_n_kg_ha'] * area_val)):,}".replace(",", ".")
         urea_tot = f"{int(round(cuenta['ahorro_urea_kg_ha'] * area_val)):,}".replace(",", ".")
+        sacos_tot = round(cuenta["sacos_urea_25kg_ha"] * area_val, 1)
         clp_tot = f"${int(round(cuenta['ahorro_clp_ha'] * area_val)):,}".replace(",", ".")
-        agua_tot = f"{int(round(cuenta['ahorro_agua_m3_ha'] * area_val)):,}".replace(",", ".")
+        usd_tot = f"{int(round(cuenta['ahorro_usd_ha'] * area_val)):,}".replace(",", ".")
         extra_parcela_txt = (
-            f"<div style='margin-top:0.5rem; background:#E8F5E9; border:1.5px solid #2E7D32; padding:0.4rem 0.8rem; border-radius:8px; font-size:0.88rem; font-weight:800; color:#1B5E20 !important;'>"
-            f"📐 <b>Total en tu Parcela Dibujada ({area_val} ha en 2 Años):</b> "
-            f"Ahorras <b>{urea_tot} kg de Urea</b> (<b>{clp_tot} CLP</b>) y <b>{agua_tot} m³ de agua</b>."
+            f"<div style='margin-top:0.55rem; background:#E8F5E9; border:1.5px solid #2E7D32; padding:0.48rem 0.85rem; border-radius:8px; font-size:0.86rem; font-weight:800; color:#1B5E20 !important; line-height:1.45;'>"
+            f"📐 <b>Total en tu Parcela Dibujada ({area_val} ha en 2 Años — multiplicando los 3 cuadros previos × {area_val} ha):</b><br>"
+            f"1️⃣ <b>+{n_tot} kg N recuperados</b> (+{cuenta['ganancia_neta_n_kg_ha']} kg N/ha × {area_val} ha) &nbsp;➔&nbsp; "
+            f"2️⃣ <b>{urea_tot} kg de Urea ahorrados</b> ({urea_fmt} kg/ha × {area_val} ha = <b>{sacos_tot} sacos de 25 kg</b>) &nbsp;➔&nbsp; "
+            f"3️⃣ <b>{clp_tot} CLP ahorrados</b> ({clp_fmt}/ha × {area_val} ha, ~<b>${usd_tot} USD</b>)"
             f"</div>"
         )
 
@@ -1494,11 +1580,77 @@ def main():
     fig_flujo_n, fig_agua_24m = crear_figuras_cuenta_corriente_n_y_agua(cuenta, cultivo_sel)
     st.plotly_chart(fig_flujo_n, width="stretch")
 
-    # Fila 2: Gráfico de Ahorro Hídrico en la fila siguiente
+    # Fila 2: Tarjeta llamativa de Ahorro Hídrico + Gráfico de Agua Ahorrada en la fila siguiente
+    ahorro_agua_fmt = f"{cuenta['ahorro_agua_m3_ha']:,}".replace(",", ".")
+    litros_agua_fmt = f"{cuenta['ahorro_agua_m3_ha'] * 1000:,}".replace(",", ".")
+    camiones_agua_ha = max(1, int(round((cuenta["ahorro_agua_m3_ha"] * 1000) / 10000.0)))
+    extra_agua_parcela_html = ""
+    if ficha_auto.get("area_ha"):
+        area_val_w = float(ficha_auto["area_ha"])
+        agua_tot_w = f"{int(round(cuenta['ahorro_agua_m3_ha'] * area_val_w)):,}".replace(",", ".")
+        litros_tot_w = f"{int(round(cuenta['ahorro_agua_m3_ha'] * 1000 * area_val_w)):,}".replace(",", ".")
+        extra_agua_parcela_html = (
+            f"<div style='margin-top:0.45rem; background:#E0F7FA; border:1.5px solid #00838F; padding:0.4rem 0.8rem; border-radius:8px; font-size:0.86rem; font-weight:800; color:#004D40 !important;'>"
+            f"📐 <b>Total de Agua Ahorrada en tu Parcela Dibujada ({area_val_w} ha):</b> "
+            f"<b>{agua_tot_w} m³ de agua ahorrados</b> ({ahorro_agua_fmt} m³/ha × {area_val_w} ha = <b>{litros_tot_w} Litros</b>)."
+            f"</div>"
+        )
+
+    st.markdown(
+        f"<div style='background:linear-gradient(90deg, #E1F5FE 0%, #E0F2F1 100%); border:2.5px solid #0288D1; border-left:9px solid #00897B; border-radius:14px; padding:0.75rem 1.15rem; margin:0.35rem 0 0.55rem 0; box-shadow:0 3px 10px rgba(2,136,209,0.08);'>"
+        f"<div style='display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.8rem;'>"
+        f"<div>"
+        f"<span style='background:#00897B; color:#FFFFFF !important; -webkit-text-fill-color:#FFFFFF !important; font-size:0.74rem; font-weight:900; padding:3px 10px; border-radius:999px;'>"
+        f"💧 IMPACTO HÍDRICO DESTACADO EN 2 AÑOS"
+        f"</span>"
+        f"<div style='font-size:1.38rem; font-weight:900; color:#01579B !important; margin-top:0.25rem;'>"
+        f"🚰 ¡Ahorras {ahorro_agua_fmt} m³ de Agua por Hectárea! (-{cuenta['reduccion_agua_pct']:.1f}% frente al monocultivo)"
+        f"</div>"
+        f"</div>"
+        f"<div style='background:#FFFFFF; border:2px solid #00897B; border-radius:10px; padding:0.45rem 0.9rem; text-align:right;'>"
+        f"<div style='font-size:0.74rem; font-weight:900; color:#00695C !important;'>EQUIVALENTE EN LITROS Y CAMIONES ALJIBE</div>"
+        f"<div style='font-size:1.1rem; font-weight:900; color:#004D40 !important;'>💧 {litros_agua_fmt} Litros/ha (~{camiones_agua_ha} camiones aljibe)</div>"
+        f"</div>"
+        f"</div>"
+        f"{extra_agua_parcela_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
     st.plotly_chart(fig_agua_24m, width="stretch")
 
     # =========================================================================
-    # DETALLES DE CICLOS (TARJETAS SIMÉTRICAS, CATEGORÍAS LIMPIAS Y PARÉNTESIS EN FILA SIGUIENTE)
+    # 1° CARTAS GANTT MULTI-TEMPORADA (24 MESES SEPARADOS POR AÑO EN 2 TABLAS DE 12 MESES)
+    # =========================================================================
+    st.markdown(
+        '<div class="section-header header-earth">🗓️ Carta Gantt Multi-Temporada (24 Meses: Año 1 y Año 2 Separados por Tabla)</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(construir_leyenda_gantt_cuadrados_html(), unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='font-size:1.04rem; font-weight:900; color:#0B3D91; margin:0.35rem 0 0.2rem 0;'>"
+        "📅 Tabla Carta Gantt — AÑO 1 (Meses 1 al 12 • Semanas 1 a 4 debajo de cada mes)"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.plotly_chart(
+        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_1"),
+        width="stretch",
+    )
+
+    st.markdown(
+        "<div style='font-size:1.04rem; font-weight:900; color:#1B5E20; margin:0.65rem 0 0.2rem 0;'>"
+        "📅 Tabla Carta Gantt — AÑO 2 (Meses 13 al 24 • Semanas 1 a 4 debajo de cada mes)"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.plotly_chart(
+        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_2"),
+        width="stretch",
+    )
+
+    # =========================================================================
+    # 2° DETALLES DE CICLOS (TARJETAS SIMÉTRICAS, CATEGORÍAS LIMPIAS Y PARÉNTESIS EN FILA SIGUIENTE)
     # =========================================================================
     st.markdown(
         '<div class="section-header header-leaf">📅 Detalles de Ciclos e Interpretación por Temporada (Año 1 y Año 2)</div>',
@@ -1584,37 +1736,6 @@ def main():
                     f"</div>",
                     unsafe_allow_html=True,
                 )
-
-    # =========================================================================
-    # CARTAS GANTT MULTI-TEMPORADA (24 MESES SEPARADOS POR AÑO EN 2 TABLAS DE 12 MESES)
-    # =========================================================================
-    st.markdown(
-        '<div class="section-header header-earth">🗓️ Carta Gantt Multi-Temporada (24 Meses: Año 1 y Año 2 Separados por Tabla)</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(construir_leyenda_gantt_cuadrados_html(), unsafe_allow_html=True)
-
-    st.markdown(
-        "<div style='font-size:1.04rem; font-weight:900; color:#0B3D91; margin:0.35rem 0 0.2rem 0;'>"
-        "📅 Tabla Carta Gantt — AÑO 1 (Meses 1 al 12 • Semanas 1 a 4 debajo de cada mes)"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.plotly_chart(
-        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_1"),
-        width="stretch",
-    )
-
-    st.markdown(
-        "<div style='font-size:1.04rem; font-weight:900; color:#1B5E20; margin:0.65rem 0 0.2rem 0;'>"
-        "📅 Tabla Carta Gantt — AÑO 2 (Meses 13 al 24 • Semanas 1 a 4 debajo de cada mes)"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.plotly_chart(
-        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_2"),
-        width="stretch",
-    )
 
     # =========================================================================
     # SECCIÓN 2: MONITOREO SATELITAL
