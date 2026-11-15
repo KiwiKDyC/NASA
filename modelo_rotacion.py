@@ -491,9 +491,16 @@ def generar_escenarios_rotacion(
     nombre_cultivo_actual: str,
     disponibilidad_agua: str,
     prioridad_usuario: str,
+    df_hist_personalizado: pd.DataFrame = None,
 ) -> Dict[str, Any]:
-    """Ejecuta el motor completo: carga NASA POWER + proyecta 6 meses + evalúa 3 escenarios."""
-    df_hist = cargar_datos_zona(zona)
+    """Ejecuta el motor completo: carga NASA POWER (o el DataFrame interpolado del mapa)
+    + proyecta 12 meses + evalúa 3 escenarios y la secuencia anual consolidada.
+    """
+    df_hist = (
+        df_hist_personalizado.copy()
+        if df_hist_personalizado is not None
+        else cargar_datos_zona(zona)
+    )
     df_hort = cargar_catalogo_hortalizas()
 
     fila_actual_df = df_hort[df_hort["cultivo"] == nombre_cultivo_actual]

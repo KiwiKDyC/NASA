@@ -3,11 +3,18 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import folium
+from folium.plugins import Draw
+from streamlit_folium import st_folium
 
 from descargar_datos import ZONAS_CHILE
 from modelo_rotacion import (
     cargar_catalogo_hortalizas,
     generar_escenarios_rotacion,
+)
+from geolocalizacion_datos import (
+    extraer_coordenadas_mapa,
+    caracterizar_parcela_automatica,
 )
 
 st.set_page_config(
@@ -858,14 +865,136 @@ def construir_grafico_clima_suelo(df_hist: pd.DataFrame, df_proj: pd.DataFrame, 
     return fig
 
 
+def construir_mapa_interactivo_osm(
+    lat_sel: float,
+    lon_sel: float,
+    ficha_predio: dict,
+    cultivo_actual: str,
+    primer_recomendado: str = None,
+) -> folium.Map:
+    """Construye el mapa interactivo del Valle Central de Chile con OpenStreetMap +
+    capa satelital Esri World Imagery, herramientas de dibujo de parcela (Draw),
+    marcadores de las 4 estaciones base calibradas y resaltado espacial del predio activo.
+    """
+    m = folium.Map(
+        location=[lat_sel, lon_sel],
+        zoom_start=8,
+        tiles=None,
+        control_scale=True,
+    )
+
+    # Capas base: OpenStreetMap (por defecto) + Satélite Esri World Imagery (ver potreros reales)
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="🗺️ Mapa de Caminos y Comunas (OpenStreetMap)",
+        control=True,
+    ).add_to(m)
+
+    folium.TileLayer(
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri World Imagery",
+        name="🛰️ Vista Satelital de Potreros (Esri World Imagery)",
+        control=True,
+    ).add_to(m)
+
+    # Herramienta para que el agricultor pueda dibujar su potrero (polígono/rectángulo) o marcar punto
+    Draw(
+        export=False,
+        position="topleft",
+        draw_options={
+            "polyline": False,
+            "circle": False,
+            "circlemarker": False,
+            "polygon": {
+                "allowIntersection": False,
+                "shapeOptions": {"color": "#2E7D32", "fillColor": "#66BB6A", "fillOpacity": 0.35},
+            },
+            "rectangle": {
+                "shapeOptions": {"color": "#0288D1", "fillColor": "#29B6F6", "fillOpacity": 0.35},
+            },
+            "marker": True,
+        },
+        edit_options={"edit": True, "remove": True},
+    ).add_to(m)
+
+    # Marcadores discretos de nuestras 4 estaciones base calibradas (Quillota, Rancagua, Talca, Chillán)
+    for nombre_z, info_z in ZONAS_CHILE.items():
+        folium.CircleMarker(
+            location=[info_z["lat"], info_z["lon"]],
+            radius=6,
+            color="#0B3D91",
+            weight=2,
+            fill=True,
+            fill_color="#1E88E5",
+            fill_opacity=0.85,
+            tooltip=f"📡 Nodo Base NASA: {nombre_z} ({info_z['region']}) — Clic para seleccionar",
+        ).add_to(m)
+
+    # Resaltar espacialmente la parcela seleccionada con círculo + marcador con diagnóstico
+    icono_act = obtener_icono_cultivo(cultivo_actual)
+    icono_rec = obtener_icono_cultivo(primer_recomendado) if primer_recomendado else "🌱"
+    texto_rec = f"{icono_rec} <b>Rotar a:</b> {primer_recomendado}" if primer_recomendado else ""
+
+    popup_html = (
+        f"<div style='font-family:sans-serif; font-size:13px; min-width:220px; color:#1C2819;'>"
+        f"<div style='background:#0B3D91; color:white; padding:5px 8px; border-radius:6px; font-weight:bold; margin-bottom:6px;'>"
+        f"🛰️ Mi Predio Seleccionado</div>"
+        f"<b>📍 Sector:</b> {ficha_predio['nombre_ubicacion']}<br>"
+        f"<b>🧭 Coordenadas:</b> {lat_sel:.4f}°, {lon_sel:.4f}°<br>"
+        f"<b>💧 Humedad Raíz (NASA):</b> {ficha_predio['etiqueta_humedad']}<br>"
+        f"<b>🌿 Vigor Sentinel-2:</b> NDVI {ficha_predio['ndvi_actual']:.2f} (NDMI {ficha_predio['ndmi_actual']:+.2f})<br>"
+        f"<b>🌾 Cultivo Actual:</b> {icono_act} {cultivo_actual}<br>"
+        f"<div style='margin-top:5px; padding:4px 6px; background:#E8F5E9; border-left:4px solid #2E7D32; border-radius:4px;'>"
+        f"{texto_rec}</div>"
+        f"</div>"
+    )
+
+    folium.Circle(
+        location=[lat_sel, lon_sel],
+        radius=4500,
+        color="#2E7D32",
+        weight=3,
+        fill=True,
+        fill_color="#4CAF50",
+        fill_opacity=0.25,
+        tooltip=f"📍 Predio Activo ({lat_sel:.3f}, {lon_sel:.3f}) | NDVI: {ficha_predio['ndvi_actual']:.2f} | Agua: {ficha_predio['etiqueta_humedad']}",
+    ).add_to(m)
+
+    folium.Marker(
+        location=[lat_sel, lon_sel],
+        popup=folium.Popup(popup_html, max_width=290, show=True),
+        tooltip=f"🌱 Tu Parcela: {ficha_predio['nombre_ubicacion']} (Clic para ver diagnóstico)",
+        icon=folium.Icon(color="green", icon="leaf", prefix="fa"),
+    ).add_to(m)
+
+    folium.LayerControl(position="topright", collapsed=False).add_to(m)
+    return m
+
+
 def main():
     inyectar_estilos_campo_claro()
 
     df_hortalizas = cargar_catalogo_hortalizas()
     lista_cultivos = df_hortalizas["cultivo"].tolist()
 
+    # Inicializar coordenadas de la parcela en session_state (por defecto Valle Central: Rancagua/Requínoa)
+    if "parcela_lat" not in st.session_state:
+        st.session_state["parcela_lat"] = -34.1708
+        st.session_state["parcela_lon"] = -70.7444
+        st.session_state["tipo_seleccion"] = "Nodo Inicial Valle Central (Rancagua)"
+        st.session_state["area_ha"] = None
+
+    # Pre-caracterizar automáticamente la ubicación actual para pre-llenar los ajustes avanzados
+    ficha_auto = caracterizar_parcela_automatica(
+        lat=st.session_state["parcela_lat"],
+        lon=st.session_state["parcela_lon"],
+        tipo_seleccion=st.session_state["tipo_seleccion"],
+        area_ha=st.session_state["area_ha"],
+    )
+    zona_sel = ficha_auto["zona_cercana"]
+
     # =========================================================================
-    # BARRA LATERAL: CONTROLES SIMPLES Y VISUALES PARA EL AGRICULTOR
+    # BARRA LATERAL ULTRA-SIMPLIFICADA (SOLO 2 PASOS + AJUSTES AVANZADOS OPCIONALES)
     # =========================================================================
     with st.sidebar:
         st.markdown(
@@ -873,68 +1002,95 @@ def main():
             <div style="text-align:center; background:#0B3D91; color:white !important; padding:0.9rem; border-radius:14px; margin-bottom:1rem;">
                 <div style="font-size:2.3rem;">🛰️🌱</div>
                 <div style="font-weight:900; font-size:1.15rem; color:white !important;">MI POTRERO NASA</div>
-                <div style="font-size:0.8rem; color:#BBDEFB !important;">Configura tu campo en 4 pasos</div>
+                <div style="font-size:0.82rem; color:#BBDEFB !important;">Solo 2 pasos: 1) Toca el Mapa • 2) Elige Cultivo</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        zona_sel = st.selectbox(
-            "1️⃣ ¿Dónde está tu campo?",
-            options=list(ZONAS_CHILE.keys()),
-            format_func=lambda z: f"📍 {z} ({ZONAS_CHILE[z]['region']})",
-            index=0,
-        )
-
         cultivo_sel = st.selectbox(
-            "2️⃣ ¿Qué acabas de cosechar?",
+            "🌾 PASO 2: ¿Qué cultivo tienes o acabas de cosechar?",
             options=lista_cultivos,
             format_func=lambda c: f"{obtener_icono_cultivo(c)} {c}",
             index=1 if "Tomate" in lista_cultivos else 0,
         )
 
-        agua_sel = st.select_slider(
-            "3️⃣ ¿Cuánta agua tienes para regar?",
-            options=["Baja", "Media", "Alta"],
-            value="Baja",
-        )
-
-        prioridad_sel = st.radio(
-            "4️⃣ ¿Qué es lo más importante ahora?",
-            options=[
-                "💧 Ahorrar agua",
-                "🤎 Recuperar salud del suelo / nitrógeno",
-                "☀️ Estabilidad térmica (evitar heladas)",
-            ],
-            index=0,
-        )
-
-        st.divider()
-        modo_vista = st.toggle(
-            "🔬 Activar Modo Experto / Agrónomo",
-            value=False,
-            help="Muestra tablas técnicas, coeficientes Kc, GDD detallados y datos crudos del satélite NASA.",
-        )
-
-        info_z = ZONAS_CHILE[zona_sel]
         st.markdown(
             f"""
-            <div style="background:#FFFFFF; padding:0.75rem; border-radius:12px; border:1.5px solid #BCAAA4; font-size:0.84rem;">
-                <b>📡 Satélite NASA POWER Activo</b><br>
-                📍 <b>Comuna:</b> {zona_sel}<br>
-                🧭 <b>Coord:</b> {info_z['lat']}°, {info_z['lon']}°<br>
-                📶 <b>Estado:</b> 100% Offline Listo
+            <div style="background:#E8F5E9; padding:0.75rem; border-radius:12px; border-left:5px solid #2E7D32; font-size:0.84rem; margin:0.6rem 0;">
+                <b>🤖 Auto-Diagnóstico Satelital Activo</b><br>
+                📍 <b>Sector:</b> {ficha_auto['nombre_ubicacion']}<br>
+                💧 <b>Agua detectada:</b> {ficha_auto['agua_inferida']} ({ficha_auto['etiqueta_humedad']})<br>
+                🎯 <b>Meta sugerida:</b> {ficha_auto['prioridad_inferida']}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # Ejecutar motor
+        # Mover selectores manuales de Agua y Prioridad dentro del expander opcional pre-llenado
+        opciones_agua = ["Baja", "Media", "Alta"]
+        opciones_prio = [
+            "💧 Ahorrar agua",
+            "🤎 Recuperar salud del suelo / nitrógeno",
+            "☀️ Estabilidad térmica (evitar heladas)",
+        ]
+        idx_prio_auto = (
+            opciones_prio.index(ficha_auto["prioridad_inferida"])
+            if ficha_auto["prioridad_inferida"] in opciones_prio
+            else 0
+        )
+
+        with st.expander("⚙️ Ajustes avanzados (opcional)", expanded=False):
+            st.caption("Valores pre-llenados automáticamente desde el satélite para tu coordenada:")
+            SaltoRapido = st.selectbox(
+                "📌 Saltar rápido a estación base:",
+                options=["(Usar clic en el mapa)"] + list(ZONAS_CHILE.keys()),
+                index=0,
+            )
+            if SaltoRapido != "(Usar clic en el mapa)":
+                info_salto = ZONAS_CHILE[SaltoRapido]
+                st.session_state["parcela_lat"] = info_salto["lat"]
+                st.session_state["parcela_lon"] = info_salto["lon"]
+                st.session_state["tipo_seleccion"] = f"Estación base {SaltoRapido}"
+                st.session_state["area_ha"] = None
+
+            agua_sel = st.select_slider(
+                "💧 Disponibilidad de agua (Auto-detectada)",
+                options=opciones_agua,
+                value=ficha_auto["agua_inferida"],
+            )
+
+            prioridad_sel = st.radio(
+                "🎯 Prioridad de rotación (Auto-detectada)",
+                options=opciones_prio,
+                index=idx_prio_auto,
+            )
+
+            modo_vista = st.toggle(
+                "🔬 Activar Modo Experto / Agrónomo",
+                value=False,
+                help="Muestra tablas técnicas, coeficientes Kc, GDD detallados y datos crudos del satélite NASA.",
+            )
+
+        st.markdown(
+            f"""
+            <div style="background:#FFFFFF; padding:0.75rem; border-radius:12px; border:1.5px solid #BCAAA4; font-size:0.82rem; margin-top:0.6rem;">
+                <b>📡 Telemetría NASA POWER + Sentinel-2</b><br>
+                🧭 <b>Coord:</b> {st.session_state['parcela_lat']:.4f}°, {st.session_state['parcela_lon']:.4f}°<br>
+                📍 <b>Nodo Base:</b> {zona_sel} ({ficha_auto['distancia_estacion_km']} km)<br>
+                📶 <b>Estado:</b> 100% Offline-Ready
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # Ejecutar motor usando el DataFrame interpolado espacialmente para la coordenada del predio
     resultado = generar_escenarios_rotacion(
         zona=zona_sel,
         nombre_cultivo_actual=cultivo_sel,
         disponibilidad_agua=agua_sel,
         prioridad_usuario=prioridad_sel,
+        df_hist_personalizado=ficha_auto["df_interpolado"],
     )
     ind = resultado["indicadores"]
     cultivo_act = resultado["cultivo_actual"]
@@ -951,8 +1107,8 @@ def main():
             <div class="banner-left">
                 <div style="font-size:3.2rem; line-height:1;">🛰️🌍🌾</div>
                 <div>
-                    <span class="nasa-pill">NASA SPACE APPS • AGROCLIMATOLOGÍA SATELITAL</span>
-                    <p class="banner-title">Guía Visual de Rotación de Cultivos — {zona_sel}</p>
+                    <span class="nasa-pill">NASA SPACE APPS • AGROCLIMATOLOGÍA SATELITAL + SIG</span>
+                    <p class="banner-title">Guía Visual de Rotación de Cultivos — {ficha_auto['nombre_ubicacion']}</p>
                     <p class="banner-sub">
                         Vienes de <b>{icono_actual} {cultivo_sel}</b> ➔ El satélite recomienda sembrar:
                         <b style="background:#2E7D32; padding:2px 10px; border-radius:8px; color:#FFF !important;">
@@ -969,6 +1125,97 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
+    # =========================================================================
+    # SECCIÓN 0: LOS 2 ÚNICOS CONTROLES PRINCIPALES (MAPA OPENSTREETMAP + FICHA AUTO-DIAGNÓSTICO)
+    # =========================================================================
+    st.markdown(
+        '<div class="section-header header-water">🗺️ PASO 1: Haz Clic en tu Potrero o Dibuja tu Parcela en el Mapa (Valparaíso a Biobío)</div>',
+        unsafe_allow_html=True,
+    )
+
+    col_mapa, col_ficha = st.columns([1.35, 1.0])
+
+    with col_mapa:
+        mapa_osm = construir_mapa_interactivo_osm(
+            lat_sel=st.session_state["parcela_lat"],
+            lon_sel=st.session_state["parcela_lon"],
+            ficha_predio=ficha_auto,
+            cultivo_actual=cultivo_sel,
+            primer_recomendado=ganador["cultivo_recomendado"],
+        )
+        salida_mapa = st_folium(
+            mapa_osm,
+            height=410,
+            use_container_width=True,
+            key="mapa_valle_central",
+            returned_objects=["last_clicked", "last_active_drawing"],
+        )
+
+        # Si el agricultor hizo clic o dibujó un polígono nuevo, actualizar coordenadas y recargar ficha
+        nueva_coord = extraer_coordenadas_mapa(salida_mapa)
+        if nueva_coord is not None:
+            n_lat, n_lon, n_tipo, n_area = nueva_coord
+            if (
+                abs(n_lat - st.session_state["parcela_lat"]) > 1e-4
+                or abs(n_lon - st.session_state["parcela_lon"]) > 1e-4
+            ):
+                st.session_state["parcela_lat"] = n_lat
+                st.session_state["parcela_lon"] = n_lon
+                st.session_state["tipo_seleccion"] = n_tipo
+                st.session_state["area_ha"] = n_area
+                st.rerun()
+
+    with col_ficha:
+        area_badge = (
+            f"<span style='background:#0288D1; color:white !important; padding:2px 8px; border-radius:6px; font-size:0.78rem;'>📐 {ficha_auto['area_ha']} ha dibujadas</span>"
+            if ficha_auto["area_ha"]
+            else f"<span style='background:#0B3D91; color:white !important; padding:2px 8px; border-radius:6px; font-size:0.78rem;'>📍 {ficha_auto['tipo_seleccion']}</span>"
+        )
+        st.markdown(
+            f"""
+            <div class="crop-card crop-card-winner" style="padding:1.15rem 1.25rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.5rem;">
+                    <span style="background:#2E7D32; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.76rem; font-weight:900;">
+                        🛰️ FICHA DE DIAGNÓSTICO AUTOMÁTICO DEL PREDIO
+                    </span>
+                    {area_badge}
+                </div>
+                <div style="font-size:1.15rem; font-weight:900; color:#1C2819 !important; margin-bottom:0.2rem;">
+                    📍 {ficha_auto['nombre_ubicacion']}
+                </div>
+                <div style="font-size:0.82rem; font-weight:700; color:#5D4037 !important; margin-bottom:0.65rem;">
+                    🧭 Coordenadas: <b>{ficha_auto['lat']:.4f}°, {ficha_auto['lon']:.4f}°</b> • Cultivo actual: <b>{icono_actual} {cultivo_sel}</b>
+                </div>
+                <div class="visual-chips-grid" style="margin-top:0.4rem; margin-bottom:0.6rem;">
+                    <div class="v-chip chip-water">
+                        <span class="label">💧 Humedad Detectada</span>
+                        <span class="val">{ficha_auto['etiqueta_humedad']}</span>
+                    </div>
+                    <div class="v-chip chip-leaf">
+                        <span class="label">🌿 Estado Cobertura</span>
+                        <span class="val">NDVI {ficha_auto['ndvi_actual']:.2f} ({100 - int(ficha_auto['suelo_desnudo_pct'])}% cub.)</span>
+                    </div>
+                    <div class="v-chip chip-earth">
+                        <span class="label">🤎 Temp. Tierra (NASA TS)</span>
+                        <span class="val">{ficha_auto['temp_suelo_c']:.1f} °C</span>
+                    </div>
+                    <div class="v-chip chip-sun">
+                        <span class="label">❄️ Riesgo de Heladas</span>
+                        <span class="val">{ficha_auto['riesgo_heladas_txt'].split()[0]}</span>
+                    </div>
+                </div>
+                <div style="background:#EFEBE9; padding:0.55rem 0.75rem; border-radius:10px; font-size:0.84rem; font-weight:700; color:#3E2723 !important; margin-bottom:0.5rem;">
+                    📋 <b>Resumen Satelital:</b> {ficha_auto['resumen_ficha']}
+                </div>
+                <div class="short-tip" style="border-left-color:#0288D1; margin-top:0.35rem;">
+                    🤖 <b>Decisión Automática (Zero-Input):</b> Agua inferida <b>{ficha_auto['agua_inferida']}</b> • Prioridad activada: <b>{ficha_auto['prioridad_inferida']}</b>.<br>
+                    <span style="font-size:0.8rem; font-weight:600; color:#4E342E !important;">({ficha_auto['motivo_prioridad']})</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # =========================================================================
     # SECCIÓN 1: RECOMENDACIÓN CONSOLIDADA DE ROTACIÓN ÓPTIMA A 12 MESES + CARTA GANTT
