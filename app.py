@@ -18,7 +18,7 @@ from geolocalizacion_datos import (
 )
 
 st.set_page_config(
-    page_title="AgroSatélite NASA | Rotación de Cultivos Chile",
+    page_title="AgroCycle: Smart Crop Rotation & Soil-Water Ledger",
     page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -1139,10 +1139,10 @@ def main():
             <div class="banner-left">
                 <div style="font-size:3.2rem; line-height:1;">🛰️🌍🌾</div>
                 <div>
-                    <span class="nasa-pill">NASA SPACE APPS • TOUR GUIADO PASO A PASO</span>
-                    <p class="banner-title">Asistente Satelital de Rotación de Cultivos — Valle Central de Chile</p>
+                    <span class="nasa-pill">NASA SPACE APPS • AGROCYCLE PROJECT</span>
+                    <p class="banner-title">AgroCycle: Smart Crop Rotation & Soil-Water Ledger</p>
                     <p class="banner-sub">
-                        Sigue los <b>3 pasos</b> abajo para obtener tu Plan Maestro de 24 Meses con análisis satelital automático.
+                        Asistente Satelital de Rotación Inteligente y Cuenta Corriente de Suelo y Agua — Valle Central de Chile. Sigue los <b>3 pasos</b> abajo para tu Plan de 24 Meses.
                     </p>
                 </div>
             </div>

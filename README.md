@@ -1,6 +1,6 @@
-# 🛰️ AgroRotación Chile — NASA Space Apps Challenge
+# 🛰️ AgroCycle: Smart Crop Rotation & Soil-Water Ledger — NASA Space Apps Challenge
 
-Sistema de apoyo a la decisión (Web & Mobile) para recomendar **rotación inteligente de cultivos de hortalizas** en el Valle Central de Chile (**Valparaíso a Biobío**), cruzando datos satelitales agroclimáticos y de suelo de **NASA POWER (2021–2026)** con requerimientos fisiológicos y fitosanitarios de hortalizas.
+**AgroCycle: Smart Crop Rotation & Soil-Water Ledger** es un sistema de apoyo a la decisión (Web & Mobile) para recomendar **rotación inteligente de cultivos de hortalizas a 24 meses** y gestionar una **Cuenta Corriente de Nitrógeno y Agua (Soil-Water Ledger)** en el Valle Central de Chile (**Valparaíso a Biobío**), cruzando datos satelitales agroclimáticos, ópticos y topográficos de **NASA POWER**, **Copernicus Sentinel-2**, **NASA SRTM** y **OpenStreetMap**.
 
 ---
 
