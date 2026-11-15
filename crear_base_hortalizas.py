@@ -16,7 +16,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
     datos_hortalizas = [
         {
             "cultivo": "Papa",
-            "familia_botanica": "Solanaceae (Solanáceas)",
+            "familia_botanica": "Solanaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 7.0,
             "gdd_requeridos": 1350,
@@ -35,7 +35,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Tomate",
-            "familia_botanica": "Solanaceae (Solanáceas)",
+            "familia_botanica": "Solanaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 10.0,
             "gdd_requeridos": 1500,
@@ -54,7 +54,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Pimentón",
-            "familia_botanica": "Solanaceae (Solanáceas)",
+            "familia_botanica": "Solanaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 10.0,
             "gdd_requeridos": 1450,
@@ -73,7 +73,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Poroto verde",
-            "familia_botanica": "Fabaceae (Leguminosas)",
+            "familia_botanica": "Fabaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 9.0,
             "gdd_requeridos": 950,
@@ -92,7 +92,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Haba / Arveja",
-            "familia_botanica": "Fabaceae (Leguminosas)",
+            "familia_botanica": "Fabaceae",
             "temporada_optima": "Otoño-Invierno",
             "t_base_gdd": 4.0,
             "gdd_requeridos": 900,
@@ -111,7 +111,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Brócoli / Coliflor",
-            "familia_botanica": "Brassicaceae (Brasicáceas)",
+            "familia_botanica": "Brassicaceae",
             "temporada_optima": "Otoño-Invierno",
             "t_base_gdd": 5.0,
             "gdd_requeridos": 1000,
@@ -130,7 +130,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Repollo",
-            "familia_botanica": "Brassicaceae (Brasicáceas)",
+            "familia_botanica": "Brassicaceae",
             "temporada_optima": "Otoño-Primavera",
             "t_base_gdd": 4.5,
             "gdd_requeridos": 980,
@@ -149,7 +149,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Cebolla",
-            "familia_botanica": "Amaryllidaceae (Aliáceas)",
+            "familia_botanica": "Amaryllidaceae",
             "temporada_optima": "Otoño-Primavera",
             "t_base_gdd": 5.0,
             "gdd_requeridos": 1200,
@@ -168,7 +168,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Ajo",
-            "familia_botanica": "Amaryllidaceae (Aliáceas)",
+            "familia_botanica": "Amaryllidaceae",
             "temporada_optima": "Otoño-Invierno",
             "t_base_gdd": 4.0,
             "gdd_requeridos": 1100,
@@ -187,7 +187,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Lechuga",
-            "familia_botanica": "Asteraceae (Asteráceas)",
+            "familia_botanica": "Asteraceae",
             "temporada_optima": "Todo el año (Óptimo Otoño-Primavera)",
             "t_base_gdd": 4.5,
             "gdd_requeridos": 750,
@@ -206,7 +206,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Maíz dulce",
-            "familia_botanica": "Poaceae (Gramíneas)",
+            "familia_botanica": "Poaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 8.0,
             "gdd_requeridos": 1250,
@@ -225,7 +225,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Zapallo",
-            "familia_botanica": "Cucurbitaceae (Cucurbitáceas)",
+            "familia_botanica": "Cucurbitaceae",
             "temporada_optima": "Primavera-Verano",
             "t_base_gdd": 10.0,
             "gdd_requeridos": 1400,
@@ -244,7 +244,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Zanahoria",
-            "familia_botanica": "Apiaceae (Apiáceas)",
+            "familia_botanica": "Apiaceae",
             "temporada_optima": "Otoño-Primavera",
             "t_base_gdd": 5.0,
             "gdd_requeridos": 1050,
@@ -263,7 +263,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Vicia (Abono Verde)",
-            "familia_botanica": "Fabaceae (Leguminosas)",
+            "familia_botanica": "Fabaceae",
             "temporada_optima": "Puente Corto Otoño-Invierno (60-80 días)",
             "t_base_gdd": 4.0,
             "gdd_requeridos": 480,
@@ -282,7 +282,7 @@ def generar_catalogo_hortalizas() -> pd.DataFrame:
         },
         {
             "cultivo": "Mostaza Blanca (Biofumigante)",
-            "familia_botanica": "Brassicaceae (Brasicáceas)",
+            "familia_botanica": "Brassicaceae",
             "temporada_optima": "Puente Corto Post-Verano (60-75 días)",
             "t_base_gdd": 4.5,
             "gdd_requeridos": 450,

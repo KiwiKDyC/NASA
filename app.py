@@ -725,7 +725,7 @@ def crear_figuras_cuenta_corriente_n_y_agua(cuenta: dict, cultivo_actual: str) -
     fig_n.update_layout(
         barmode="overlay",
         title=dict(
-            text="<b>🧪 Evolución del Nitrógeno en tu Tierra por Temporada (Aporte por Cultivo y Saldo Acumulado)</b>",
+            text="<b>🧪 Evolución del Nitrógeno en tu Tierra</b>",
             font=dict(size=16, color="#1B5E20"),
             x=0.01,
             xanchor="left",
@@ -1013,7 +1013,7 @@ def construir_mapa_interactivo_osm(
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri World Imagery",
-        name="🛰️ Vista Satelital de Potreros (Esri)",
+        name="🛰️ Vista Satelital de Parcelas (Esri)",
         control=True,
     ).add_to(m)
 
@@ -1142,7 +1142,7 @@ def main():
                     <span class="nasa-pill">NASA SPACE APPS • AGROCYCLE PROJECT</span>
                     <p class="banner-title">AgroCycle: Smart Crop Rotation & Soil-Water Ledger</p>
                     <p class="banner-sub">
-                        Asistente Satelital de Rotación Inteligente y Cuenta Corriente de Suelo y Agua — Valle Central de Chile. Sigue los <b>3 pasos</b> abajo para tu Plan de 24 Meses.
+                        Asistente Satelital de Rotación Inteligente y Cuenta Corriente de Suelo y Agua.
                     </p>
                 </div>
             </div>
@@ -1208,7 +1208,7 @@ def main():
 
     st.caption(
         "📐 **Cómo usar el mapa:** El recuadro azul punteado muestra el área que abarca la **Zona Agrícola de Referencia** seleccionada. "
-        "Si quieres evaluar tu potrero específico, acércate con el botón **+** y dibuja tu parcela con el ícono de **Polígono (pentágono)** o **Rectángulo (cuadrado)** arriba a la izquierda del mapa."
+        "Si quieres evaluar tu parcela específica, acércate con el botón **+** y dibuja tu parcela con el ícono de **Polígono (pentágono)** o **Rectángulo (cuadrado)** arriba a la izquierda del mapa."
     )
 
     mapa_osm = construir_mapa_interactivo_osm(
@@ -1302,7 +1302,7 @@ def main():
     # PASO 2 DEL TOUR (GRANDE, FÁCIL DE SELECCIONAR Y SIN CAJAS VACÍAS)
     # =========================================================================
     st.markdown(
-        '<div class="section-header header-leaf">🌾 PASO 2: Selecciona tu Cultivo Actual (o el Último que Cosechaste en este Potrero)</div>',
+        '<div class="section-header header-leaf">🌾 PASO 2: Selecciona tu Cultivo Actual (o el Último que Cosechaste)</div>',
         unsafe_allow_html=True,
     )
 
@@ -1462,7 +1462,7 @@ def main():
     # INYECCIÓN AUTOMÁTICA DE ABONO VERDE (SIN "FÁCIL DE ENTENDER:" NI FAMILIA REPETIDA)
     # =========================================================================
     st.markdown(
-        '<div class="section-header header-leaf">🌿 Inyección Automática de Abonos Verdes (Cultivos Puente de 60 a 80 Días)</div>',
+        '<div class="section-header header-leaf">🌿 Inyección Automática de Abonos Verdes (Cultivos Puente)</div>',
         unsafe_allow_html=True,
     )
 
@@ -1622,14 +1622,14 @@ def main():
     # 1° CARTAS GANTT MULTI-TEMPORADA (24 MESES SEPARADOS POR AÑO EN 2 TABLAS DE 12 MESES)
     # =========================================================================
     st.markdown(
-        '<div class="section-header header-earth">🗓️ Carta Gantt Multi-Temporada (24 Meses: Año 1 y Año 2 Separados por Tabla)</div>',
+        '<div class="section-header header-earth">🗓️ Matriz de Rotación Estacional</div>',
         unsafe_allow_html=True,
     )
     st.markdown(construir_leyenda_gantt_cuadrados_html(), unsafe_allow_html=True)
 
     st.markdown(
         "<div style='font-size:1.04rem; font-weight:900; color:#0B3D91; margin:0.35rem 0 0.2rem 0;'>"
-        "📅 Tabla Carta Gantt — AÑO 1 (Meses 1 al 12 • Semanas 1 a 4 debajo de cada mes)"
+        "📅 Matriz de Rotación — AÑO 1 (Meses 1 al 12)"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -1640,7 +1640,7 @@ def main():
 
     st.markdown(
         "<div style='font-size:1.04rem; font-weight:900; color:#1B5E20; margin:0.65rem 0 0.2rem 0;'>"
-        "📅 Tabla Carta Gantt — AÑO 2 (Meses 13 al 24 • Semanas 1 a 4 debajo de cada mes)"
+        "📅 Matriz de Rotación — AÑO 2 (Meses 13 al 24)"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -1927,7 +1927,7 @@ def main():
     # ÍNDICES ÓPTICOS DE VEGETACIÓN Y SUELOS
     # =========================================================================
     st.markdown(
-        '<div style="font-size:1.05rem; font-weight:900; color:#1B5E20; margin:0.9rem 0 0.5rem 0;">🛰️ Índices Ópticos de Vegetación y Suelos — Copernicus Sentinel-2 L2A</div>',
+        '<div style="font-size:1.05rem; font-weight:900; color:#1B5E20; margin:0.9rem 0 0.5rem 0;">🛰️ Índices Ópticos de Vegetación y Suelos</div>',
         unsafe_allow_html=True,
     )
     s1, s2, s3, s4 = st.columns(4)
