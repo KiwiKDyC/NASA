@@ -7,7 +7,6 @@ DATA_DIR.mkdir(exist_ok=True)
 
 def generar_catalogo_hortalizas() -> pd.DataFrame:
     """Construye la base de conocimiento agronómico para hortalizas y cultivos
-
     de rotación representativos del Valle Central de Chile (Valparaíso a Biobío).
     """
     datos_hortalizas = [

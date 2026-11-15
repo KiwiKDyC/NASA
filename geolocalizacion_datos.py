@@ -22,15 +22,20 @@ def calcular_distancia_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
     return 2.0 * r * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
 
-def extraer_coordenadas_mapa(salida_mapa: Optional[Dict[str, Any]]) -> Optional[Tuple[float, float, str, Optional[float]]]:
-    """Extrae (lat, lon, tipo_seleccion, area_aprox_ha) desde la respuesta de st_folium.
-    Soporta tanto el dibujo de un polígono/rectángulo/marcador (last_active_drawing)
-    como un clic directo sobre el mapa (last_clicked).
+def extraer_coordenadas_mapa(
+    salida_mapa: Optional[Dict[str, Any]],
+    permitir_clic_simple: bool = False,
+) -> Optional[Tuple[float, float, str, Optional[float], Optional[List[List[float]]]]]:
+    """Extrae (lat, lon, tipo_seleccion, area_aprox_ha, poligono_latlon) desde la respuesta de st_folium.
+    - Si el usuario dibujó un polígono/rectángulo/marcador con la barra Draw (`last_active_drawing`),
+      devuelve sus vértices exactos `[[lat, lon], ...]` para dibujarlo fielmente sin reemplazarlo por un círculo.
+    - Solo usa `last_clicked` si `permitir_clic_simple=True`, evitando que al hacer clic en los vértices
+      mientras se dibuja un polígono se recargue el mapa a mitad del trazo.
     """
     if not salida_mapa or not isinstance(salida_mapa, dict):
         return None
 
-    # 1. Priorizar polígono, rectángulo o marcador recién dibujado por el agricultor
+    # 1. Priorizar polígono, rectángulo o marcador terminado de dibujar en Draw
     dibujo = salida_mapa.get("last_active_drawing")
     if dibujo and isinstance(dibujo, dict) and "geometry" in dibujo:
         geom = dibujo["geometry"]
@@ -39,35 +44,45 @@ def extraer_coordenadas_mapa(salida_mapa: Optional[Dict[str, Any]]) -> Optional[
 
         if gtype == "Point" and len(coords) >= 2:
             lon, lat = float(coords[0]), float(coords[1])
-            return (round(lat, 5), round(lon, 5), "Punto marcado en el predio", None)
+            return (round(lat, 5), round(lon, 5), "Marcador colocado en el predio", None, None)
 
         elif gtype == "Polygon" and coords and len(coords[0]) >= 3:
             anillo = coords[0]
-            lons = [ float(p[0]) for p in anillo ]
-            lats = [ float(p[1]) for p in anillo ]
-            # Centroide simple del polígono
+            lons = [float(p[0]) for p in anillo]
+            lats = [float(p[1]) for p in anillo]
+            poligono_latlon = [[round(float(p[1]), 6), round(float(p[0]), 6)] for p in anillo]
+
+            # Centroide del polígono
             lat_c = float(np.mean(lats[:-1])) if len(lats) > 3 else float(np.mean(lats))
             lon_c = float(np.mean(lons[:-1])) if len(lons) > 3 else float(np.mean(lons))
 
-            # Estimar superficie aproximada en hectáreas (proyección plana local)
+            # Superficie aproximada en hectáreas
             lat_rad = math.radians(lat_c)
-            x_m = [ (lon - lon_c) * 111320.0 * math.cos(lat_rad) for lon in lons ]
-            y_m = [ (lat - lat_c) * 110540.0 for lat in lats ]
+            x_m = [(lon - lon_c) * 111320.0 * math.cos(lat_rad) for lon in lons]
+            y_m = [(lat - lat_c) * 110540.0 for lat in lats]
             area_m2 = 0.5 * abs(
                 sum(x_m[i] * y_m[i + 1] - x_m[i + 1] * y_m[i] for i in range(len(x_m) - 1))
             )
             area_ha = round(max(0.1, area_m2 / 10000.0), 2)
-            return (round(lat_c, 5), round(lon_c, 5), f"Parcela dibujada (~{area_ha} ha)", area_ha)
+            return (
+                round(lat_c, 5),
+                round(lon_c, 5),
+                f"Polígono de parcela (~{area_ha} ha)",
+                area_ha,
+                poligono_latlon,
+            )
 
-    # 2. Si no hay polígono activo, usar el último clic directo sobre el mapa
-    clic = salida_mapa.get("last_clicked")
-    if clic and isinstance(clic, dict) and "lat" in clic and "lng" in clic:
-        return (
-            round(float(clic["lat"]), 5),
-            round(float(clic["lng"]), 5),
-            "Clic directo en el potrero",
-            None,
-        )
+    # 2. Usar clic simple solo cuando el modo sea explícitamente "Clic rápido"
+    if permitir_clic_simple:
+        clic = salida_mapa.get("last_clicked")
+        if clic and isinstance(clic, dict) and "lat" in clic and "lng" in clic:
+            return (
+                round(float(clic["lat"]), 5),
+                round(float(clic["lng"]), 5),
+                "Punto seleccionado en el mapa",
+                None,
+                None,
+            )
 
     return None
 
