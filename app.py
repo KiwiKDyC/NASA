@@ -24,17 +24,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Iconografía visual para cada hortaliza (amigable para el productor)
+# Iconografía visual para cada hortaliza y cultivo de cobertura (amigable para el productor)
 ICONOS_CULTIVOS = {
     "Papa": "🥔",
     "Tomate": "🍅",
     "Pimentón": "🫑",
     "Cebolla": "🧅",
+    "Ajo": "🧄",
     "Lechuga": "🥬",
+    "Brócoli / Coliflor": "🥦",
+    "Repollo": "🥬",
     "Poroto verde": "🫛",
     "Haba / Arveja": "🌿",
+    "Maíz dulce": "🌽",
     "Zapallo": "🎃",
     "Zanahoria": "🥕",
+    "Vicia (Abono Verde)": "🌿",
+    "Mostaza Blanca (Biofumigante)": "🌼",
     "Avena + Vicia (Cobertura)": "🌾",
 }
 
@@ -621,16 +627,162 @@ def construir_carta_gantt_html(secuencia_12m: dict) -> str:
     )
 
 
-def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
-    """Construye una matriz Carta Gantt interactiva en Plotly de 12 Meses (Mes 1 a Mes 12)
-    y 48 Semanas (S1..S4 por mes) con los emojis de cada hortaliza en cada celda activa.
+def construir_figura_gantt_plotly(
+    datos_gantt: dict,
+    modo_vista: str = "24_meses",
+) -> go.Figure:
+    """Construye la ÚNICA Carta Gantt interactiva en Plotly a vista completa (sin deslizar),
+    permitiendo alternar entre:
+    - '24_meses': Los 24 Meses completos (Año 1 y Año 2 = 96 semanas, 4 temporadas + abonos verdes puente)
+    - 'anio_1': Año 1 en detalle (Meses 1 a 12 = Semanas 1 a 48)
+    - 'anio_2': Año 2 en detalle (Meses 13 a 24 = Semanas 49 a 96)
     """
-    etapas = list(reversed(secuencia_12m["etapas"]))
-    etiquetas_y = [
-        f"<b>{e['orden']}. {obtener_icono_cultivo(e['cultivo'])} {e['cultivo']}</b><br><span style='font-size:11px;color:#5D4037'>{e['familia_botanica']}</span>"
-        for e in etapas
-    ]
+    es_plan_24 = "etapas_24m" in datos_gantt
+    if not es_plan_24:
+        etapas_base = datos_gantt["etapas"]
+        modo_vista = "12_meses_legacy"
+    else:
+        if modo_vista == "anio_1":
+            etapas_base = datos_gantt["etapas_anio1"]
+        elif modo_vista == "anio_2":
+            etapas_base = datos_gantt["etapas_anio2"]
+        else:
+            etapas_base = datos_gantt["etapas_24m"]
+
+    etapas = list(reversed(etapas_base))
+    etiquetas_y = []
+    for e in etapas:
+        icono = obtener_icono_cultivo(e["cultivo"])
+        es_puente = bool(e.get("es_puente_cobertura", False))
+        tag_puente = " <span style='color:#1B5E20;font-weight:900;'>[PUENTE 60-80d]</span>" if es_puente else ""
+        bal_n = e.get("balance_nitrogeno_kg_ha", 0)
+        txt_n = f" • {bal_n:+} kg N/ha" if bal_n != 0 else ""
+        etiquetas_y.append(
+            f"<b>{e['orden']}. {icono} {e['cultivo']}</b>{tag_puente}<br>"
+            f"<span style='font-size:11px;color:#5D4037'>{e['familia_botanica']}{txt_n}</span>"
+        )
+
+    if modo_vista == "24_meses":
+        # En vista de 24 meses agrupamos visualmente en 48 quincenas (2 bloques por mes x 24 meses)
+        # para que los 2 años entren al 100% en la pantalla sin deslizar y cada ícono se vea nítido
+        num_cols = 48
+        x_vals = list(range(1, 49))
+        z_matriz = []
+        texto_celdas = []
+        hover_celdas = []
+
+        for e in etapas:
+            icono = obtener_icono_cultivo(e["cultivo"])
+            es_puente = bool(e.get("es_puente_cobertura", False))
+            sem_96 = e["semanas_96"]
+            fila_z = []
+            fila_txt = []
+            fila_hov = []
+            for q in range(1, 49):
+                w1 = (q - 1) * 2
+                w2 = w1 + 1
+                info1 = sem_96[w1]
+                info2 = sem_96[w2]
+                activa = info1["activa"] or info2["activa"]
+                mes_num = ((q - 1) // 2) + 1
+                anio_num = 1 if mes_num <= 12 else 2
+                mitad_mes = "1ª Quincena" if (q % 2 == 1) else "2ª Quincena"
+                if not activa:
+                    fila_z.append(0.0)
+                    fila_txt.append("·")
+                    fila_hov.append(f"Año {anio_num} • Mes {mes_num} ({mitad_mes}) — Sin este cultivo")
+                else:
+                    fase = info1["fase"] if info1["activa"] else info2["fase"]
+                    if fase == "Siembra":
+                        fila_z.append(0.35)
+                    elif fase == "Crecimiento":
+                        fila_z.append(0.55 if es_puente else 0.70)
+                    else:
+                        fila_z.append(1.0)
+                    fila_txt.append(icono)
+                    tipo_txt = "Abono Verde Puente (60-80 días)" if es_puente else "Cultivo Comercial"
+                    fila_hov.append(
+                        f"<b>{icono} {e['cultivo']} ({tipo_txt})</b><br>"
+                        f"Año {anio_num} • Mes {mes_num} ({mitad_mes} • Semanas {w1+1}-{w2+1}/96)<br>"
+                        f"Etapa: <b>{fase}</b> | Balance N: <b>{e.get('balance_nitrogeno_kg_ha', 0):+} kg N/ha</b>"
+                    )
+            z_matriz.append(fila_z)
+            texto_celdas.append(fila_txt)
+            hover_celdas.append(fila_hov)
+
+        escala_colores = [
+            [0.0, "#F5F3EF"],
+            [0.15, "#F5F3EF"],
+            [0.35, "#B3E5FC"],
+            [0.55, "#A5D6A7"],
+            [0.70, "#C8E6C9"],
+            [1.0, "#FFE082"],
+        ]
+
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=z_matriz,
+                x=x_vals,
+                y=etiquetas_y,
+                text=texto_celdas,
+                texttemplate="%{text}",
+                textfont={"size": 14},
+                hoverinfo="text",
+                hovertext=hover_celdas,
+                colorscale=escala_colores,
+                zmin=0.0,
+                zmax=1.0,
+                showscale=False,
+                xgap=2,
+                ygap=5,
+            )
+        )
+
+        for m in range(1, 25):
+            centro_mes = (m - 1) * 2 + 1.5
+            color_m = "#0B3D91" if m <= 12 else "#1B5E20"
+            fig.add_annotation(
+                x=centro_mes,
+                y=len(etapas) - 0.35,
+                text=f"<b>M{m}</b>",
+                showarrow=False,
+                font=dict(size=10, color=color_m, family="Arial Black"),
+                yref="y",
+            )
+            if m < 24:
+                es_cambio_anio = m == 12
+                fig.add_vline(
+                    x=m * 2 + 0.5,
+                    line_width=3.0 if es_cambio_anio else 1.2,
+                    line_dash="solid" if es_cambio_anio else "dot",
+                    line_color="#D84315" if es_cambio_anio else "#BCAAA4",
+                )
+
+        tick_texts = [f"M{((q - 1) // 2) + 1}" if q % 2 == 1 else "" for q in x_vals]
+        fig.update_layout(
+            height=340,
+            margin=dict(l=10, r=10, t=42, b=30),
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF",
+            xaxis=dict(
+                tickmode="array",
+                tickvals=x_vals,
+                ticktext=tick_texts,
+                tickfont=dict(size=9, color="#1C2819"),
+                title=dict(
+                    text="<b>🗓️ PLAN 2 AÑOS (24 MESES = M1 a M24):   💧 Azul = Siembra   |   🌱 Verde = Crecimiento / Abono Verde   |   🌾 Dorado = Cosecha / Incorporación</b>",
+                    font=dict(size=12, color="#1B5E20"),
+                ),
+                range=[0.5, 48.5],
+            ),
+            yaxis=dict(tickfont=dict(size=11, color="#1C2819")),
+        )
+        return fig
+
+    # Vista detallada de 12 meses (Año 1: Meses 1-12 o Año 2: Meses 13-24) -> 48 semanas completas
     semanas_x = list(range(1, 49))
+    offset_mes = 12 if modo_vista == "anio_2" else 0
+    offset_sem = 48 if modo_vista == "anio_2" else 0
 
     z_matriz = []
     texto_celdas = []
@@ -638,12 +790,14 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
 
     for e in etapas:
         icono = obtener_icono_cultivo(e["cultivo"])
+        es_puente = bool(e.get("es_puente_cobertura", False))
         fila_z = []
         fila_txt = []
         fila_hov = []
         for idx_w, info_sem in enumerate(e["semanas_48"], start=1):
-            mes_num = ((idx_w - 1) // 4) + 1
+            mes_num = offset_mes + ((idx_w - 1) // 4) + 1
             sem_mes = ((idx_w - 1) % 4) + 1
+            sem_global = offset_sem + idx_w
             if not info_sem["activa"]:
                 fila_z.append(0.0)
                 fila_txt.append("·")
@@ -653,12 +807,13 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
                 if fase == "Siembra":
                     fila_z.append(0.35)
                 elif fase == "Crecimiento":
-                    fila_z.append(0.70)
+                    fila_z.append(0.55 if es_puente else 0.70)
                 else:
                     fila_z.append(1.0)
                 fila_txt.append(icono)
                 fila_hov.append(
-                    f"<b>{icono} {e['cultivo']}</b><br>Mes {mes_num} • Semana S{sem_mes} (Sem. {idx_w}/48)<br>Etapa: <b>{fase}</b>"
+                    f"<b>{icono} {e['cultivo']}</b><br>Mes {mes_num} • Semana S{sem_mes} (Sem. {sem_global})<br>"
+                    f"Etapa: <b>{fase}</b> | Balance N: <b>{e.get('balance_nitrogeno_kg_ha', 0):+} kg N/ha</b>"
                 )
         z_matriz.append(fila_z)
         texto_celdas.append(fila_txt)
@@ -668,6 +823,7 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
         [0.0, "#F5F3EF"],
         [0.15, "#F5F3EF"],
         [0.35, "#B3E5FC"],
+        [0.55, "#A5D6A7"],
         [0.70, "#C8E6C9"],
         [1.0, "#FFE082"],
     ]
@@ -691,15 +847,15 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
         )
     )
 
-    # Líneas divisorias verticales cada 4 semanas (Mes 1 a Mes 12) y títulos de Mes arriba
     for m in range(1, 13):
         centro_mes = (m - 1) * 4 + 2.5
+        mes_real = offset_mes + m
         fig.add_annotation(
             x=centro_mes,
             y=len(etapas) - 0.38,
-            text=f"<b>MES {m}</b>",
+            text=f"<b>MES {mes_real}</b>",
             showarrow=False,
-            font=dict(size=11, color="#0B3D91", family="Arial Black"),
+            font=dict(size=11, color="#0B3D91" if offset_mes == 0 else "#1B5E20", family="Arial Black"),
             yref="y",
         )
         if m < 12:
@@ -714,7 +870,7 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
     tick_texts = [f"S{((w - 1) % 4) + 1}" for w in tick_vals]
 
     fig.update_layout(
-        height=255,
+        height=265,
         margin=dict(l=10, r=10, t=38, b=28),
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
@@ -732,6 +888,86 @@ def construir_figura_gantt_plotly(secuencia_12m: dict) -> go.Figure:
         yaxis=dict(
             tickfont=dict(size=12, color="#1C2819"),
         ),
+    )
+    return fig
+
+
+def crear_figura_cuenta_corriente_n_agua(cuenta: dict, cultivo_actual: str) -> go.Figure:
+    """Gráfico visual de la Cuenta Corriente de Nitrógeno (kg N/ha por temporada) y
+    comparativa de Consumo de Agua (m3/ha en 24 meses: Monocultivo vs Rotación 2 Años).
+    """
+    movs = cuenta["movimientos"]
+    etiquetas_etapas = [m["etapa"] for m in movs]
+    flujos_n = [m["flujo_n_kg_ha"] for m in movs]
+    colores_n = ["#2E7D32" if v >= 0 else "#C62828" for v in flujos_n]
+    textos_n = [f"{v:+} kg N" for v in flujos_n]
+
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        column_widths=[0.58, 0.42],
+        subplot_titles=(
+            "<b>🧪 Flujo de Nitrógeno por Temporada (kg N/ha)</b>",
+            "<b>💧 Agua Total en 2 Años (m³/ha)</b>",
+        ),
+        horizontal_spacing=0.12,
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x=etiquetas_etapas,
+            y=flujos_n,
+            marker=dict(color=colores_n, line=dict(color="#1C2819", width=1.2)),
+            text=textos_n,
+            textposition="outside",
+            textfont=dict(size=11, color="#1C2819", family="Arial Black"),
+            name="Aporte / Extracción N (kg/ha)",
+        ),
+        row=1,
+        col=1,
+    )
+
+    escenarios_agua = [f"Monocultivo ({cultivo_actual})", "Rotación 2 Años + Cobertura"]
+    valores_agua = [cuenta["agua_monocultivo_m3_ha"], cuenta["agua_rotacion_m3_ha"]]
+    fig.add_trace(
+        go.Bar(
+            x=escenarios_agua,
+            y=valores_agua,
+            marker=dict(color=["#E53935", "#0288D1"], line=dict(color="#1C2819", width=1.5)),
+            text=[f"{v:,} m³/ha".replace(",", ".") for v in valores_agua],
+            textposition="inside",
+            textfont=dict(size=13, color="#FFFFFF", family="Arial Black"),
+            name="Consumo Hídrico 24m (m³/ha)",
+        ),
+        row=1,
+        col=2,
+    )
+
+    fig.add_hline(y=0, line_width=2, line_color="#4E342E", row=1, col=1)
+    max_n = max(110, max(abs(v) for v in flujos_n) + 40)
+    fig.update_yaxes(
+        title_text="kg N / ha",
+        range=[-max_n, max_n],
+        tickfont=dict(color="#1C2819", size=11),
+        gridcolor="#E0E0E0",
+        row=1,
+        col=1,
+    )
+    fig.update_yaxes(
+        title_text="m³ de Agua / ha (24 meses)",
+        tickfont=dict(color="#1C2819", size=11),
+        gridcolor="#E0E0E0",
+        row=1,
+        col=2,
+    )
+    fig.update_xaxes(tickfont=dict(color="#1C2819", size=10))
+    fig.update_layout(
+        height=310,
+        margin=dict(l=15, r=15, t=42, b=35),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FBF9F5",
+        showlegend=False,
+        font=dict(color="#1C2819"),
     )
     return fig
 
@@ -1152,7 +1388,7 @@ def main():
                         🌿 Vigor Sentinel-2: NDVI {ficha_auto['ndvi_actual']:.2f}
                     </span>
                     <span style="background:#FFFFFF; border:1.5px solid #6D4C41; color:#4E342E !important; padding:4px 10px; border-radius:8px; font-size:0.85rem; font-weight:800;">
-                        🤎 Temp. Tierra: {ficha_auto['temp_suelo_c']:.1f} °C
+                        🏔️ Pendiente SRTM: {ficha_auto['pendiente_srtm_pct']:.1f}% (Erosión {ficha_auto['riesgo_erosion_nivel']})
                     </span>
                     <span style="background:#FFFFFF; border:1.5px solid #F57C00; color:#E65100 !important; padding:4px 10px; border-radius:8px; font-size:0.85rem; font-weight:800;">
                         ❄️ Heladas: {ficha_auto['riesgo_heladas_txt'].split()[0]}
@@ -1168,6 +1404,7 @@ def main():
     # PASO 2 Y PASO 3 DEL TOUR: ELEGIR CULTIVO ACTUAL Y PRIORIDAD DE ROTACIÓN
     # =========================================================================
     col_paso2, col_paso3 = st.columns(2)
+    lista_cultivos_comerciales = df_hortalizas[~df_hortalizas["es_puente_cobertura"]]["cultivo"].tolist()
 
     with col_paso2:
         st.markdown(
@@ -1176,9 +1413,9 @@ def main():
         )
         cultivo_sel = st.selectbox(
             "¿Qué hortaliza tienes sembrada o acabas de sacar de este potrero?",
-            options=lista_cultivos,
+            options=lista_cultivos_comerciales,
             format_func=lambda c: f"{obtener_icono_cultivo(c)} {c}",
-            index=1 if "Tomate" in lista_cultivos else 0,
+            index=1 if "Tomate" in lista_cultivos_comerciales else 0,
         )
         datos_c_act = df_hortalizas[df_hortalizas["cultivo"] == cultivo_sel].iloc[0]
         st.markdown(
@@ -1189,7 +1426,7 @@ def main():
                     <div>
                         <div style="font-size:1.15rem; font-weight:900; color:#1C2819 !important;">{cultivo_sel}</div>
                         <div style="font-size:0.84rem; font-weight:700; color:#5D4037 !important;">
-                            🌿 Familia: <b>{datos_c_act['familia_botanica']}</b> • Efecto en suelo: <b>{datos_c_act['aporte_suelo']}</b>
+                            🌿 Familia: <b>{datos_c_act['familia_botanica']}</b> • Huella N: <b>{int(datos_c_act['balance_nitrogeno_kg_ha']):+} kg N/ha</b> • Agua: <b>{int(datos_c_act['consumo_agua_m3_ha']):,} m³/ha</b>
                         </div>
                     </div>
                 </div>
@@ -1214,7 +1451,7 @@ def main():
             else 0
         )
         prioridad_sel = st.radio(
-            f"¿Qué objetivo quieres priorizar para los próximos 12 meses? (Sugerencia satelital: {ficha_auto['prioridad_inferida']})",
+            f"¿Qué objetivo quieres priorizar para los próximos 24 meses? (Sugerencia satelital: {ficha_auto['prioridad_inferida']})",
             options=opciones_prio,
             index=idx_prio_sugerida,
         )
@@ -1230,13 +1467,14 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # Ejecutar motor con los 3 pasos (Lugar + Cultivo Actual + Prioridad) y el agua auto-detectada
+    # Ejecutar motor con los 3 pasos (Lugar + Cultivo Actual + Prioridad), agua auto-detectada y pendiente SRTM
     resultado = generar_escenarios_rotacion(
         zona=zona_sel,
         nombre_cultivo_actual=cultivo_sel,
         disponibilidad_agua=agua_auto,
         prioridad_usuario=prioridad_sel,
         df_hist_personalizado=ficha_auto["df_interpolado"],
+        pendiente_srtm_pct=ficha_auto["pendiente_srtm_pct"],
     )
     ind = resultado["indicadores"]
     cultivo_act = resultado["cultivo_actual"]
@@ -1245,93 +1483,220 @@ def main():
     icono_ganador = obtener_icono_cultivo(ganador["cultivo_recomendado"])
 
     # =========================================================================
-    # RESULTADO PRINCIPAL: PLAN DE ROTACIÓN RECOMENDADO + 1 ÚNICA CARTA GANTT SIN DESLIZAR
+    # RESULTADO PRINCIPAL: PLAN MULTI-TEMPORADA 24 MESES + ABONO VERDE PUENTE + CUENTA CORRIENTE N & AGUA
     # =========================================================================
     sec_12m = resultado["secuencia_optima_12m"]
-    etapas_12m = sec_12m["etapas"]
+    plan_24m = resultado["plan_24m"]
+    cuenta = plan_24m["cuenta_corriente"]
+    alerta_av = plan_24m["alerta_abono_verde"]
+    etapas_24m = plan_24m["etapas_24m"]
 
     st.markdown(
-        '<div class="section-header header-leaf">🏆 RESULTADO: Tu Plan Maestro de Rotación Recomendado (Próximos 12 Meses)</div>',
+        '<div class="section-header header-leaf">🏆 RESULTADO: Planificador Multi-Temporada a 2 Años (24 Meses) y Cuenta Corriente del Predio</div>',
         unsafe_allow_html=True,
     )
 
-    e1, e2, e3 = etapas_12m[0], etapas_12m[1], etapas_12m[2]
-    ic1, ic2, ic3 = (
-        obtener_icono_cultivo(e1["cultivo"]),
-        obtener_icono_cultivo(e2["cultivo"]),
-        obtener_icono_cultivo(e3["cultivo"]),
+    cadena_visual_24m = " ➔ ".join(
+        [f"{obtener_icono_cultivo(e['cultivo'])} {e['cultivo']}" for e in etapas_24m]
     )
 
     st.markdown(
-        f"""
-        <div class="sequence-master-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; margin-bottom:0.8rem;">
-                <div>
-                    <span style="background:#2E7D32; color:white !important; padding:0.3rem 0.85rem; border-radius:999px; font-size:0.8rem; font-weight:900;">
-                        🏆 SECUENCIA ANUAL CONSOLIDADA (NASA POWER + COPERNICUS SENTINEL-2)
-                    </span>
-                    <h3 style="margin:0.4rem 0 0 0; font-size:1.5rem; font-weight:900; color:#1C2819 !important;">
-                        {icono_actual} {cultivo_sel} (Actual) ➔ {ic1} {e1['cultivo']} ➔ {ic2} {e2['cultivo']} ➔ {ic3} {e3['cultivo']}
-                    </h3>
-                </div>
-                <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
-                    <div class="v-chip chip-water" style="min-width:135px; text-align:center;">
-                        <span class="label">Ahorro Agua Anual</span>
-                        <span class="val">💧 +{sec_12m['ahorro_hidrico_anual_pct']:.0f}% (Kc {sec_12m['kc_medio_anual']})</span>
-                    </div>
-                    <div class="v-chip chip-earth" style="min-width:145px; text-align:center;">
-                        <span class="label">Riesgo Suelo Desnudo</span>
-                        <span class="val">🤎 Baja de {sec_12m['suelo_desnudo_actual_pct']:.0f}% a 0%</span>
-                    </div>
-                    <div class="v-chip chip-leaf" style="min-width:135px; text-align:center;">
-                        <span class="label">Cobertura Anual</span>
-                        <span class="val">🌱 48 / 48 Semanas</span>
-                    </div>
-                </div>
-            </div>
-            <p style="font-size:0.95rem; font-weight:600; color:#263238 !important; margin:0 0 0.85rem 0; background:rgba(255,255,255,0.85); padding:0.65rem 0.9rem; border-radius:10px; border-left:5px solid #0288D1;">
-                💡 <b>¿Por qué funciona esta secuencia?</b> {sec_12m['resumen_explicativo']}
-            </p>
-        </div>
-        """,
+        f"<div class='sequence-master-card'>"
+        f"<div style='display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; margin-bottom:0.75rem;'>"
+        f"<div>"
+        f"<span style='background:#2E7D32; color:white !important; padding:0.3rem 0.85rem; border-radius:999px; font-size:0.8rem; font-weight:900;'>"
+        f"🏆 SECUENCIA ENCADENADA DE 4 TEMPORADAS + PUENTES DE ABONO VERDE (24 MESES / 96 SEMANAS)"
+        f"</span>"
+        f"<h3 style='margin:0.45rem 0 0 0; font-size:1.32rem; font-weight:900; color:#1C2819 !important;'>"
+        f"{icono_actual} {cultivo_sel} (Actual) ➔ {cadena_visual_24m}"
+        f"</h3>"
+        f"</div>"
+        f"<div style='display:flex; gap:0.6rem; flex-wrap:wrap;'>"
+        f"<div class='v-chip chip-leaf' style='min-width:140px; text-align:center;'>"
+        f"<span class='label'>Diversidad Botánica</span>"
+        f"<span class='val'>🌿 {plan_24m['familias_distintas_count']} Familias Distintas</span>"
+        f"</div>"
+        f"<div class='v-chip chip-water' style='min-width:140px; text-align:center;'>"
+        f"<span class='label'>Ahorro Hídrico 24m</span>"
+        f"<span class='val'>💧 -{cuenta['reduccion_agua_pct']:.1f}% ({cuenta['ahorro_agua_m3_ha']:,} m³/ha)</span>"
+        f"</div>"
+        f"<div class='v-chip chip-earth' style='min-width:145px; text-align:center;'>"
+        f"<span class='label'>Riesgo Suelo Desnudo</span>"
+        f"<span class='val'>🤎 Baja de {sec_12m['suelo_desnudo_actual_pct']:.0f}% a 0%</span>"
+        f"</div>"
+        f"</div>"
+        f"</div>"
+        f"<p style='font-size:0.93rem; font-weight:600; color:#263238 !important; margin:0; background:rgba(255,255,255,0.88); padding:0.65rem 0.9rem; border-radius:10px; border-left:5px solid #0288D1;'>"
+        f"💡 <b>Rotación sin repetición de familia:</b> Valida en cada temporada los Grados-Día (GDD) de NASA POWER, corta el ciclo de nemátodos/hongos de <b>{datos_c_act['familia_botanica']}</b> y mantiene las 96 semanas de los 2 años con cobertura viva."
+        f"</p>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
-    # 3 Bloques encadenados de la Secuencia 12 Meses
-    cols_seq = st.columns(3)
-    colores_borde_seq = ["#0288D1", "#2E7D32", "#6D4C41"]
-    for idx_s, etapa in enumerate(etapas_12m):
-        ic_s = obtener_icono_cultivo(etapa["cultivo"])
-        c_borde = colores_borde_seq[idx_s]
-        with cols_seq[idx_s]:
-            st.markdown(
-                f"""
-                <div class="seq-step-box" style="border-color:{c_borde}; border-left: 6px solid {c_borde};">
-                    <div style="font-size:0.78rem; font-weight:900; color:{c_borde} !important; text-transform:uppercase;">
-                        ETAPA {etapa['orden']} • {etapa['etiqueta_periodo']} (Semanas {etapa['semana_inicio']} a {etapa['semana_fin']})
-                    </div>
-                    <div style="display:flex; align-items:center; gap:0.6rem; margin:0.35rem 0;">
-                        <span style="font-size:2.4rem;">{ic_s}</span>
-                        <div>
-                            <div style="font-size:1.25rem; font-weight:900; color:#1C2819 !important;">{etapa['cultivo']}</div>
-                            <div style="font-size:0.82rem; font-weight:700; color:#5D4037 !important;">🌿 {etapa['familia_botanica']}</div>
-                        </div>
-                    </div>
-                    <div style="font-size:0.83rem; font-weight:700; color:#1C2819 !important; margin-top:0.3rem;">
-                        💧 <b>Agua:</b> {etapa['demanda_hidrica']} (Kc={etapa['kc_promedio']}) &nbsp;|&nbsp;
-                        🤎 <b>Suelo:</b> {etapa['aporte_suelo']}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # --- ÚNICA CARTA GANTT VISUAL QUE MUESTRA EL AÑO COMPLETO SIN DESLIZAR ---
+    # --- INSIGNIA / ALERTA DE INYECCIÓN AUTOMÁTICA DE CULTIVOS DE COBERTURA (VENTANA CORTA 60-80 DÍAS) ---
+    ic_p1 = obtener_icono_cultivo(alerta_av["cultivo_puente_1"])
+    ic_p2 = obtener_icono_cultivo(alerta_av["cultivo_puente_2"])
     st.markdown(
-        '<div class="section-header header-earth">🗓️ Carta Gantt Anual (12 Meses / 48 Semanas a Vista Completa)</div>',
+        f"<div class='tour-step-box' style='background:linear-gradient(90deg, #F1F8E9 0%, #FFF8E1 100%); border:2.5px solid #558B2F; border-left:8px solid #2E7D32;'>"
+        f"<div style='display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.8rem;'>"
+        f"<div style='flex:1; min-width:300px;'>"
+        f"<span class='step-badge' style='background:#2E7D32;'>🌿 INYECCIÓN AUTOMÁTICA DE ABONO VERDE (VENTANA CORTA 60–80 DÍAS)</span>"
+        f"<span style='background:#E65100; color:#FFFFFF !important; font-weight:800; font-size:0.78rem; padding:0.22rem 0.65rem; border-radius:999px;'>"
+        f"🏔️ Riesgo Erosión SRTM: {alerta_av['riesgo_erosion_nivel']} (Pendiente {alerta_av['pendiente_srtm_pct']}% + {alerta_av['lluvia_ventana_mm']:.0f} mm lluvia)"
+        f"</span>"
+        f"<div style='font-size:0.95rem; font-weight:700; color:#1C2819 !important; margin-top:0.45rem;'>"
+        f"{alerta_av['explicacion']}"
+        f"</div>"
+        f"</div>"
+        f"<div style='display:flex; gap:0.65rem; flex-wrap:wrap;'>"
+        f"<div style='background:#FFFFFF; border:2px solid #2E7D32; border-radius:12px; padding:0.5rem 0.8rem; min-width:210px;'>"
+        f"<div style='font-size:0.72rem; font-weight:900; color:#2E7D32 !important;'>PUENTE AÑO 1 ({alerta_av['ventana_dias']} DÍAS • {alerta_av['gdd_ventana']:.0f} GDD)</div>"
+        f"<div style='font-size:1.02rem; font-weight:900; color:#1C2819 !important;'>{ic_p1} {alerta_av['cultivo_puente_1']}</div>"
+        f"<div style='font-size:0.76rem; font-weight:700; color:#5D4037 !important;'>{alerta_av['aporte_puente_1']}</div>"
+        f"</div>"
+        f"<div style='background:#FFFFFF; border:2px solid #558B2F; border-radius:12px; padding:0.5rem 0.8rem; min-width:210px;'>"
+        f"<div style='font-size:0.72rem; font-weight:900; color:#558B2F !important;'>PUENTE AÑO 2 (70 DÍAS • INYECCIÓN N)</div>"
+        f"<div style='font-size:1.02rem; font-weight:900; color:#1C2819 !important;'>{ic_p2} {alerta_av['cultivo_puente_2']}</div>"
+        f"<div style='font-size:0.76rem; font-weight:700; color:#5D4037 !important;'>{alerta_av['aporte_puente_2']}</div>"
+        f"</div>"
+        f"</div>"
+        f"</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
-    st.plotly_chart(construir_figura_gantt_plotly(sec_12m), use_container_width=True)
+
+    # --- TARJETA DE IMPACTO ACUMULADO: CUENTA CORRIENTE DE NITRÓGENO Y AGUA (24 MESES) ---
+    clp_fmt = f"${cuenta['ahorro_clp_ha']:,}".replace(",", ".")
+    agua_ahorro_fmt = f"{cuenta['ahorro_agua_m3_ha']:,}".replace(",", ".")
+    extra_parcela_txt = ""
+    if ficha_auto.get("area_ha"):
+        area_val = float(ficha_auto["area_ha"])
+        clp_tot = f"${int(round(cuenta['ahorro_clp_ha'] * area_val)):,}".replace(",", ".")
+        agua_tot = f"{int(round(cuenta['ahorro_agua_m3_ha'] * area_val)):,}".replace(",", ".")
+        extra_parcela_txt = (
+            f"<div style='margin-top:0.55rem; background:#E8F5E9; border:1.5px solid #2E7D32; padding:0.45rem 0.8rem; border-radius:10px; font-size:0.88rem; font-weight:800; color:#1B5E20 !important;'>"
+            f"📐 <b>Impacto Total en tu Parcela Dibujada ({area_val} ha en 2 Años):</b> "
+            f"Ahorras <b>{clp_tot} CLP</b> en fertilizante Urea y <b>{agua_tot} m³ de agua</b>."
+            f"</div>"
+        )
+
+    st.markdown(
+        f"<div class='tour-step-box' style='background:linear-gradient(135deg, #FFFFFF 0%, #E8F5E9 50%, #E1F5FE 100%); border:3px solid #0288D1;'>"
+        f"<div style='display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.7rem;'>"
+        f"<div>"
+        f"<span class='step-badge' style='background:#01579B;'>🏦 CUENTA CORRIENTE DE NITRÓGENO Y AGUA (IMPACTO ACUMULADO A 2 AÑOS)</span>"
+        f"<span style='font-size:0.9rem; font-weight:800; color:#1C2819 !important;'>Comparación frente a mantener monocultivo tradicional de {cultivo_sel} durante 24 meses</span>"
+        f"</div>"
+        f"</div>"
+        f"<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:0.75rem;'>"
+        f"<div style='background:#FFFFFF; border:2px solid #2E7D32; border-radius:14px; padding:0.75rem 0.95rem;'>"
+        f"<div style='font-size:0.74rem; font-weight:900; color:#2E7D32 !important; text-transform:uppercase;'>🧪 Balance Neto de Nitrógeno</div>"
+        f"<div style='font-size:1.55rem; font-weight:900; color:#1B5E20 !important;'>+{cuenta['ganancia_neta_n_kg_ha']} kg N/ha</div>"
+        f"<div style='font-size:0.78rem; font-weight:700; color:#4E342E !important;'>Rotación: {cuenta['balance_n_rotacion_kg_ha']:+} kg N vs Monocultivo: {cuenta['balance_n_monocultivo_kg_ha']:+} kg N</div>"
+        f"</div>"
+        f"<div style='background:#FFFFFF; border:2px solid #558B2F; border-radius:14px; padding:0.75rem 0.95rem;'>"
+        f"<div style='font-size:0.74rem; font-weight:900; color:#558B2F !important; text-transform:uppercase;'>🌾 Ahorro Fertilizante (Urea 46% N)</div>"
+        f"<div style='font-size:1.55rem; font-weight:900; color:#1C2819 !important;'>{cuenta['ahorro_urea_kg_ha']} kg Urea/ha</div>"
+        f"<div style='font-size:0.78rem; font-weight:700; color:#4E342E !important;'>Equivale a <b>{cuenta['sacos_urea_25kg_ha']} sacos de 25 kg</b> ahorrados/ha</div>"
+        f"</div>"
+        f"<div style='background:#FFFFFF; border:2px solid #F57C00; border-radius:14px; padding:0.75rem 0.95rem;'>"
+        f"<div style='font-size:0.74rem; font-weight:900; color:#E65100 !important; text-transform:uppercase;'>💰 Ahorro Económico Estimado</div>"
+        f"<div style='font-size:1.55rem; font-weight:900; color:#E65100 !important;'>{clp_fmt} CLP/ha</div>"
+        f"<div style='font-size:0.78rem; font-weight:700; color:#4E342E !important;'>Equivalente a <b>~${cuenta['ahorro_usd_ha']} USD/ha</b> en insumos</div>"
+        f"</div>"
+        f"<div style='background:#FFFFFF; border:2px solid #0288D1; border-radius:14px; padding:0.75rem 0.95rem;'>"
+        f"<div style='font-size:0.74rem; font-weight:900; color:#01579B !important; text-transform:uppercase;'>💧 Reducción Consumo de Agua</div>"
+        f"<div style='font-size:1.55rem; font-weight:900; color:#01579B !important;'>-{cuenta['reduccion_agua_pct']:.1f}% ({agua_ahorro_fmt} m³/ha)</div>"
+        f"<div style='font-size:0.78rem; font-weight:700; color:#4E342E !important;'>Rotación: {cuenta['agua_rotacion_m3_ha']:,} m³ vs Mono: {cuenta['agua_monocultivo_m3_ha']:,} m³/ha</div>"
+        f"</div>"
+        f"</div>"
+        f"{extra_parcela_txt}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("📊 Ver Gráfico y Cartola Detallada de la Cuenta Corriente de Nitrógeno y Agua (Temporada por Temporada)", expanded=False):
+        st.plotly_chart(
+            crear_figura_cuenta_corriente_n_agua(cuenta, cultivo_sel),
+            use_container_width=True,
+        )
+        df_movs = pd.DataFrame(cuenta["movimientos"]).rename(
+            columns={
+                "etapa": "Etapa / Cultivo",
+                "familia": "Familia Botánica",
+                "periodo": "Meses",
+                "tipo": "Rol en la Rotación",
+                "flujo_n_kg_ha": "Aporte / Extracción N (kg N/ha)",
+                "saldo_n_acum_kg_ha": "Saldo N Acumulado (kg N/ha)",
+                "agua_m3_ha": "Demanda de Agua (m³/ha)",
+            }
+        )
+        st.dataframe(df_movs, use_container_width=True, hide_index=True)
+
+    # Tarjetas de las 6 etapas encadenadas (4 Temporadas Comerciales + 2 Puentes de Abono Verde) en 2 filas limpias (Año 1 y Año 2)
+    for anio_num, lista_etapas_anio in [(1, plan_24m["etapas_anio1"]), (2, plan_24m["etapas_anio2"])]:
+        st.markdown(
+            f"<div style='font-size:0.95rem; font-weight:900; color:#1B5E20; margin:0.4rem 0 0.35rem 0;'>"
+            f"📅 Detalle de Ciclos — AÑO {anio_num} ({'Meses 1 al 12' if anio_num == 1 else 'Meses 13 al 24'})"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        cols_seq = st.columns(len(lista_etapas_anio))
+        for idx_s, etapa in enumerate(lista_etapas_anio):
+            ic_s = obtener_icono_cultivo(etapa["cultivo"])
+            es_puente = etapa["es_puente_cobertura"]
+            c_borde = "#558B2F" if es_puente else ("#0288D1" if idx_s == 1 else "#2E7D32")
+            bg_card = "#F1F8E9" if es_puente else "#FFFFFF"
+            bal_n = etapa["balance_nitrogeno_kg_ha"]
+            color_n = "#1B5E20" if bal_n >= 0 else "#C62828"
+            with cols_seq[idx_s]:
+                st.markdown(
+                    f"<div class='seq-step-box' style='background:{bg_card}; border-color:{c_borde}; border-left: 6px solid {c_borde};'>"
+                    f"<div style='font-size:0.75rem; font-weight:900; color:{c_borde} !important; text-transform:uppercase;'>"
+                    f"ETAPA {etapa['orden']} • {etapa['etiqueta_periodo']}"
+                    f"</div>"
+                    f"<div style='display:flex; align-items:center; gap:0.6rem; margin:0.35rem 0;'>"
+                    f"<span style='font-size:2.3rem;'>{ic_s}</span>"
+                    f"<div>"
+                    f"<div style='font-size:1.15rem; font-weight:900; color:#1C2819 !important;'>{etapa['cultivo']}</div>"
+                    f"<div style='font-size:0.8rem; font-weight:700; color:#5D4037 !important;'>🌿 {etapa['familia_botanica']}</div>"
+                    f"</div>"
+                    f"</div>"
+                    f"<div style='font-size:0.81rem; font-weight:700; color:#1C2819 !important; margin-top:0.25rem;'>"
+                    f"🧪 <b>Balance N:</b> <span style='color:{color_n} !important; font-weight:900;'>{bal_n:+} kg N/ha</span> &nbsp;|&nbsp; "
+                    f"💧 <b>Agua:</b> {etapa['consumo_agua_m3_ha']:,} m³/ha (Kc {etapa['kc_promedio']})<br>"
+                    f"☀️ <b>GDD Validados:</b> {etapa['cumplimiento_gdd_pct']}% ({etapa['gdd_etapa']:.0f} GDD)"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # --- ÚNICA CARTA GANTT VISUAL QUE MUESTRA EL PERIODO COMPLETO SIN DESLIZAR (CON ALTERNADOR 24M / AÑO 1 / AÑO 2) ---
+    st.markdown(
+        '<div class="section-header header-earth">🗓️ Carta Gantt Multi-Temporada (24 Meses: Año 1 y Año 2 a Vista Completa sin Deslizar)</div>',
+        unsafe_allow_html=True,
+    )
+    opcion_vista_gantt = st.radio(
+        "Selecciona el horizonte que deseas visualizar en la Carta Gantt:",
+        options=[
+            "🗓️ Vista Completa 24 Meses (Año 1 + Año 2 — 4 Temporadas + Abonos Verdes)",
+            "📅 Solo Año 1 en Detalle Semanal (Meses 1 al 12 — Semanas 1 a 48)",
+            "📅 Solo Año 2 en Detalle Semanal (Meses 13 al 24 — Semanas 49 a 96)",
+        ],
+        horizontal=True,
+        index=0,
+    )
+    if "Año 1 en Detalle" in opcion_vista_gantt:
+        modo_gantt = "anio_1"
+    elif "Año 2 en Detalle" in opcion_vista_gantt:
+        modo_gantt = "anio_2"
+    else:
+        modo_gantt = "24_meses"
+
+    st.plotly_chart(
+        construir_figura_gantt_plotly(plan_24m, modo_vista=modo_gantt),
+        use_container_width=True,
+    )
 
     # Conservamos intactas las 3 tarjetas comparativas de escenarios en un bloque desplegable limpio
     with st.expander("🔍 Ver Comparativa Detallada frente al Monocultivo y Otras Alternativas Individuales", expanded=False):

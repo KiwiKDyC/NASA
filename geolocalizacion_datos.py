@@ -183,6 +183,40 @@ def interpolar_dataframe_espacial(lat: float, lon: float) -> Tuple[pd.DataFrame,
     return df_ref, zona_mas_cercana, round(dist_min_km, 1), pesos
 
 
+def estimar_topografia_srtm(lat: float, lon: float, zona_cercana: str) -> Dict[str, Any]:
+    """Estima la pendiente media del terreno (%) y elevación aproximada (m s.n.m.)
+    inspirado en el modelo digital de elevación NASA SRTM (Shuttle Radar Topography Mission)
+    para el Valle Central, piedemonte andino y cordillera de la costa de Chile.
+    """
+    # Pendientes base representativas de los valles agrícolas y sus bordes
+    pendiente_base_zona = {
+        "Quillota": 5.8,   # Valle transversal encajonado con laderas de piedemonte
+        "Rancagua": 3.6,   # Cuenca de Rancagua con abanicos aluviales
+        "Talca": 3.2,      # Llano central del Maule con lomajes suaves
+        "Chillan": 4.9,    # Piedemonte precordillerano y lomajes de Ñuble
+    }.get(zona_cercana, 4.0)
+
+    lon_ref = ZONAS_CHILE[zona_cercana]["lon"]
+    delta_lon = abs(lon - lon_ref)
+    # Hacia precordillera (este) o cordillera de la costa (oeste) aumenta la pendiente SRTM
+    incremento_topografico = min(8.5, (delta_lon * 11.5) + abs(math.sin(lat * 15.0)) * 1.4)
+    pendiente_pct = round(pendiente_base_zona + incremento_topografico, 1)
+
+    elevacion_msnm = int(round(max(80.0, 320.0 + (lon - (-71.6)) * 520.0)))
+    if pendiente_pct >= 6.5:
+        clase_topografica = "Lomaje / Piedemonte (Pendiente moderada-alta)"
+    elif pendiente_pct >= 3.5:
+        clase_topografica = "Terraza aluvial ondulada (Pendiente media)"
+    else:
+        clase_topografica = "Valle plano / Llano central (Pendiente suave)"
+
+    return {
+        "pendiente_srtm_pct": pendiente_pct,
+        "elevacion_srtm_msnm": elevacion_msnm,
+        "clase_topografica_srtm": clase_topografica,
+    }
+
+
 def caracterizar_parcela_automatica(
     lat: float,
     lon: float,
@@ -193,10 +227,12 @@ def caracterizar_parcela_automatica(
     1. Identifica localidad/comuna e interpola las variables NASA POWER + Sentinel-2.
     2. Auto-infiere Disponibilidad de Agua ('Baja', 'Media', 'Alta') y Prioridad Agronómica
        sin que el agricultor tenga que responder preguntas técnicas.
-    3. Genera la 'Ficha de Diagnóstico Automático del Predio'.
+    3. Evalúa la topografía SRTM + PRECTOTCORR + SUELO_DESNUDO para cuantificar Riesgo de Erosión.
+    4. Genera la 'Ficha de Diagnóstico Automático del Predio'.
     """
     df_parcela, zona_cercana, dist_km, pesos_idw = interpolar_dataframe_espacial(lat, lon)
     nombre_ubicacion = geocodificar_inverso_ligero(lat, lon, zona_cercana, dist_km)
+    info_srtm = estimar_topografia_srtm(lat, lon, zona_cercana)
 
     ultimos_30 = df_parcela.tail(30)
     ultimos_365 = df_parcela.tail(365)
@@ -209,6 +245,21 @@ def caracterizar_parcela_automatica(
     ndmi_actual = float(ultimos_30["NDMI"].mean()) if "NDMI" in ultimos_30.columns else 0.15
     suelo_desnudo_pct = float(ultimos_365["SUELO_DESNUDO"].mean() * 100.0) if "SUELO_DESNUDO" in ultimos_365.columns else 25.0
     dias_helada_anual = int((ultimos_365["temp_min_c"] <= 0.5).sum())
+
+    # --- EVALUACIÓN DE RIESGO DE EROSIÓN (NASA SRTM + PRECTOTCORR + SENTINEL-2 SUELO_DESNUDO) ---
+    pendiente_pct = info_srtm["pendiente_srtm_pct"]
+    score_erosion = (
+        min(40.0, pendiente_pct * 4.5)
+        + min(35.0, (precip_anual_mm / 650.0) * 30.0)
+        + min(35.0, suelo_desnudo_pct * 1.1)
+    )
+    score_erosion = round(min(98.0, max(15.0, score_erosion)), 1)
+    if score_erosion >= 62.0 or (pendiente_pct >= 5.5 and suelo_desnudo_pct >= 20.0):
+        riesgo_erosion_nivel = "Alto"
+    elif score_erosion >= 38.0 or suelo_desnudo_pct >= 15.0:
+        riesgo_erosion_nivel = "Medio-Alto"
+    else:
+        riesgo_erosion_nivel = "Bajo"
 
     # --- REGLA 1: AUTO-INFERENCIA DE DISPONIBILIDAD DE AGUA ---
     indice_hidrico_compuesto = (
@@ -281,6 +332,11 @@ def caracterizar_parcela_automatica(
         "ndvi_actual": round(ndvi_actual, 2),
         "ndmi_actual": round(ndmi_actual, 2),
         "suelo_desnudo_pct": round(suelo_desnudo_pct, 0),
+        "pendiente_srtm_pct": pendiente_pct,
+        "elevacion_srtm_msnm": info_srtm["elevacion_srtm_msnm"],
+        "clase_topografica_srtm": info_srtm["clase_topografica_srtm"],
+        "score_erosion": score_erosion,
+        "riesgo_erosion_nivel": riesgo_erosion_nivel,
         "riesgo_heladas_txt": riesgo_heladas_txt,
         "estado_cobertura": estado_cobertura,
         "resumen_ficha": resumen_ficha,

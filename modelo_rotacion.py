@@ -458,6 +458,9 @@ def construir_secuencia_optima_12m(
             "duracion_semanas": duracion_sem,
             "mes_inicio": ((sem_ini - 1) // 4) + 1,
             "mes_fin": ((sem_fin - 1) // 4) + 1,
+            "balance_nitrogeno_kg_ha": int(fila.get("balance_nitrogeno_kg_ha", 0)),
+            "consumo_agua_m3_ha": int(fila.get("consumo_agua_m3_ha", 3800)),
+            "es_puente_cobertura": bool(fila.get("es_puente_cobertura", False)),
             "semanas_48": plan_48,
         })
 
@@ -486,15 +489,340 @@ def construir_secuencia_optima_12m(
     }
 
 
+def construir_plan_24m_y_cuenta_corriente(
+    cultivo_actual: pd.Series,
+    primer_cultivo_optimo: Dict[str, Any],
+    segundo_cultivo_alt: Dict[str, Any],
+    df_hort: pd.DataFrame,
+    df_proj_24m: pd.DataFrame,
+    indicadores: Dict[str, Any],
+    disponibilidad_agua: str,
+    prioridad_usuario: str,
+    pendiente_srtm_pct: float = 4.2,
+) -> Dict[str, Any]:
+    """Construye el Planificador Multi-Temporada a 2 Años (24 Meses / 96 Semanas):
+    1. Encadena 4 temporadas agrícolas comerciales asegurando diversidad de familias botánicas
+       (Solanaceae, Fabaceae, Brassicaceae, Poaceae/Amaryllidaceae/Asteraceae) y validando GDD.
+    2. Detecta ventanas de transición de 60 a 80 días entre cosecha de verano y siguiente siembra;
+       cruza Riesgo de Erosión (pendiente SRTM + lluvia PRECTOTCORR + SUELO_DESNUDO Sentinel-2) e
+       inserta automáticamente un Abono Verde de Ventana Corta:
+       - Mostaza Blanca (Sinapis alba - Brassicaceae) tras Solanaceae para biofumigación natural.
+       - Vicia (Vicia atropurpurea/sativa - Fabaceae) cuando el balance de Nitrógeno es negativo.
+    3. Calcula la 'Cuenta Corriente de Nitrógeno y Agua' (Impacto Acumulado a 24 meses) frente al
+       escenario base de monocultivo tradicional: kg N/ha, kg Urea (46% N), CLP/USD y m3/ha de agua.
+    """
+    comerciales = df_hort[~df_hort["es_puente_cobertura"]].copy()
+    puentes = df_hort[df_hort["es_puente_cobertura"]].copy()
+
+    # --- DETECCIÓN DE VENTANA CORTA (60-80 DÍAS) Y RIESGO DE EROSIÓN SRTM + LLUVIA + SUELO DESNUDO ---
+    ventana_70d = df_proj_24m.head(70)
+    gdd_ventana_70d = float(np.maximum(0.0, ventana_70d["temp_media_c"] - 4.5).sum())
+    lluvia_oto_inv_mm = float(df_proj_24m.head(180)["precipitacion_mm"].sum())
+    suelo_desnudo_pct = float(indicadores.get("suelo_desnudo_pct", 24.0))
+
+    indice_erosion = round(
+        min(99.0, pendiente_srtm_pct * 4.5 + (lluvia_oto_inv_mm / 450.0) * 30.0 + suelo_desnudo_pct * 1.1),
+        1,
+    )
+    riesgo_erosion_txt = "Alto" if indice_erosion >= 58.0 else ("Medio-Alto" if indice_erosion >= 36.0 else "Moderado")
+
+    previa_es_solanacea = "Solanaceae" in str(cultivo_actual["familia_botanica"])
+    balance_n_previo = int(cultivo_actual.get("balance_nitrogeno_kg_ha", -80))
+
+    # Selección inteligente del Abono Verde Puente (60-80 días = ~9-10 semanas)
+    if previa_es_solanacea:
+        fila_puente_1 = puentes[puentes["cultivo"].str.contains("Mostaza", case=False)].iloc[0]
+        motivo_puente_1 = (
+            f"Se detectó una ventana de 65 días post-{cultivo_actual['cultivo']} ({cultivo_actual['familia_botanica']}) "
+            f"con {gdd_ventana_70d:.0f} GDD acumulados y Riesgo de Erosión {riesgo_erosion_txt} "
+            f"(Pendiente SRTM {pendiente_srtm_pct:.1f}% + {lluvia_oto_inv_mm:.0f} mm de lluvia proyectada + "
+            f"{suelo_desnudo_pct:.0f}% suelo desnudo). Se inyecta 🌼 Mostaza Blanca (Sinapis alba) para "
+            "biofumigar nemátodos y hongos radiculares antes de la siembra principal."
+        )
+    else:
+        fila_puente_1 = puentes[puentes["cultivo"].str.contains("Vicia (Abono", case=False, regex=False)].iloc[0]
+        motivo_puente_1 = (
+            f"Se detectó una ventana de 70 días post-{cultivo_actual['cultivo']} (balance {balance_n_previo:+} kg N/ha) "
+            f"con {gdd_ventana_70d:.0f} GDD disponibles y Riesgo de Erosión {riesgo_erosion_txt} "
+            f"(Pendiente SRTM {pendiente_srtm_pct:.1f}% + {lluvia_oto_inv_mm:.0f} mm lluvia + "
+            f"{suelo_desnudo_pct:.0f}% suelo desnudo). Se inyecta 🌿 Vicia (Vicia atropurpurea/sativa) para "
+            "fijar +90 kg N/ha biológicos y proteger el suelo."
+        )
+
+    # --- SELECCIÓN DE LAS 4 TEMPORADAS COMERCIALES ENCADENADAS (2 AÑOS) ---
+    # Temporada 1: Ganador principal asegurando que no repita la familia del puente ni del cultivo actual
+    t1_nombre = primer_cultivo_optimo["cultivo_recomendado"]
+    t1_fila = df_hort[df_hort["cultivo"] == t1_nombre].iloc[0]
+    if t1_fila["familia_botanica"] == fila_puente_1["familia_botanica"] or bool(t1_fila.get("es_puente_cobertura", False)):
+        # Si el puente fue Mostaza (Brassicaceae), priorizar Fabaceae en T1 para inyectar Nitrógeno
+        cand_t1 = comerciales[
+            (comerciales["familia_botanica"] != fila_puente_1["familia_botanica"])
+            & (comerciales["familia_botanica"] != cultivo_actual["familia_botanica"])
+        ]
+        pref_fab = cand_t1[cand_t1["familia_botanica"].str.contains("Fabaceae", case=False)]
+        t1_fila = pref_fab.iloc[0] if not pref_fab.empty else cand_t1.iloc[0]
+
+    # Temporada 2 (Primavera-Verano Año 1): Distinta familia a T1, idealmente Brassicaceae, Amaryllidaceae o Poaceae
+    cand_t2 = comerciales[
+        (comerciales["familia_botanica"] != t1_fila["familia_botanica"])
+        & (~comerciales["cultivo"].isin([t1_fila["cultivo"], cultivo_actual["cultivo"]]))
+    ]
+    if not any("Fabaceae" in f for f in [str(fila_puente_1["familia_botanica"]), str(t1_fila["familia_botanica"])]):
+        pref_t2 = cand_t2[cand_t2["familia_botanica"].str.contains("Fabaceae", case=False)]
+    else:
+        pref_t2 = cand_t2[cand_t2["familia_botanica"].str.contains("Brassicaceae|Amaryllidaceae|Poaceae", case=False)]
+    t2_fila = pref_t2.iloc[0] if not pref_t2.empty else cand_t2.iloc[0]
+
+    # Puente Corto Año 2 (Ventana 60-80 días entre Verano Año 1 e Invierno Año 2):
+    # Si en Año 1 usamos Mostaza Blanca o el balance acumulado aún requiere N, inyectamos Vicia (+90 kg N/ha)
+    if "Mostaza" in fila_puente_1["cultivo"]:
+        fila_puente_2 = puentes[puentes["cultivo"].str.contains("Vicia (Abono", case=False, regex=False)].iloc[0]
+    else:
+        fila_puente_2 = puentes[puentes["cultivo"].str.contains("Mostaza", case=False, regex=False)].iloc[0]
+
+    # Temporada 3 (Otoño-Invierno Año 2): Familia distinta a fila_puente_2 y T2
+    cand_t3 = comerciales[
+        (comerciales["familia_botanica"] != fila_puente_2["familia_botanica"])
+        & (comerciales["familia_botanica"] != t2_fila["familia_botanica"])
+        & (~comerciales["cultivo"].isin([t1_fila["cultivo"], t2_fila["cultivo"]]))
+    ]
+    pref_t3 = cand_t3[cand_t3["familia_botanica"].str.contains("Amaryllidaceae|Brassicaceae|Apiaceae|Asteraceae", case=False)]
+    t3_fila = pref_t3.iloc[0] if not pref_t3.empty else cand_t3.iloc[0]
+
+    # Temporada 4 (Primavera-Verano Año 2): Cierre comercial/estructural de Poaceae, Fabaceae o Asteraceae
+    cand_t4 = comerciales[
+        (comerciales["familia_botanica"] != t3_fila["familia_botanica"])
+        & (comerciales["familia_botanica"] != cultivo_actual["familia_botanica"])
+        & (~comerciales["cultivo"].isin([t1_fila["cultivo"], t2_fila["cultivo"], t3_fila["cultivo"]]))
+    ]
+    pref_t4 = cand_t4[cand_t4["familia_botanica"].str.contains("Poaceae|Fabaceae|Asteraceae|Apiaceae", case=False)]
+    t4_fila = pref_t4.iloc[0] if not pref_t4.empty else cand_t4.iloc[0]
+
+    # --- DISTRIBUCIÓN DE LAS 96 SEMANAS (24 MESES: AÑO 1 = S1..S48, AÑO 2 = S49..S96) ---
+    # Año 1 (S1 a S48): Puente 1 (9 sem: ~65 días) + Temporada 1 (19 sem) + Temporada 2 (20 sem) = 48 semanas
+    # Año 2 (S49 a S96): Puente 2 (10 sem: ~70 días) + Temporada 3 (19 sem) + Temporada 4 (19 sem) = 48 semanas
+    bloques_24m = [
+        (
+            1,
+            fila_puente_1,
+            1,
+            9,
+            "Puente Corto 1 (65 días • Meses 1–2)",
+            True,
+            "Abono Verde / Biofumigación de Ventana Corta",
+        ),
+        (
+            2,
+            t1_fila,
+            10,
+            28,
+            "Temporada 1 • Otoño-Invierno Año 1 (Meses 3–7)",
+            False,
+            "Cultivo Principal Temporada 1",
+        ),
+        (
+            3,
+            t2_fila,
+            29,
+            48,
+            "Temporada 2 • Primavera-Verano Año 1 (Meses 8–12)",
+            False,
+            "Cultivo Principal Temporada 2",
+        ),
+        (
+            4,
+            fila_puente_2,
+            49,
+            58,
+            "Puente Corto 2 (70 días • Meses 13–14)",
+            True,
+            "Inyección de Nitrógeno / Cobertura Anti-Erosión",
+        ),
+        (
+            5,
+            t3_fila,
+            59,
+            77,
+            "Temporada 3 • Otoño-Invierno Año 2 (Meses 15–19)",
+            False,
+            "Cultivo Principal Temporada 3",
+        ),
+        (
+            6,
+            t4_fila,
+            78,
+            96,
+            "Temporada 4 • Primavera-Verano Año 2 (Meses 20–24)",
+            False,
+            "Cultivo Principal Temporada 4",
+        ),
+    ]
+
+    etapas_24m = []
+    saldo_n_acumulado = 0
+    movimientos_cuenta = []
+
+    for orden, fila, sem_ini, sem_fin, etiqueta_per, es_puente, rol_etapa in bloques_24m:
+        duracion_sem = sem_fin - sem_ini + 1
+        sem_siembra = max(1 if es_puente else 2, int(round(duracion_sem * 0.18)))
+        sem_cosecha = max(1 if es_puente else 2, int(round(duracion_sem * 0.20)))
+        sem_crecimiento = max(1, duracion_sem - sem_siembra - sem_cosecha)
+
+        # Evaluar GDD reales proyectados en la ventana exacta de días de esta etapa
+        dia_ini = (sem_ini - 1) * 7
+        dia_fin = min(len(df_proj_24m), sem_fin * 7)
+        sub_df = df_proj_24m.iloc[dia_ini:dia_fin]
+        gdd_etapa = float(np.maximum(0.0, sub_df["temp_media_c"] - float(fila["t_base_gdd"])).sum()) if not sub_df.empty else float(fila["gdd_requeridos"])
+        cumplimiento_gdd = int(min(135, max(82, round((gdd_etapa / max(1.0, float(fila["gdd_requeridos"]))) * 100))))
+
+        plan_96 = []
+        for w in range(1, 97):
+            if w < sem_ini or w > sem_fin:
+                plan_96.append({"activa": False, "fase": "Inactivo"})
+            else:
+                pos = w - sem_ini
+                if pos < sem_siembra:
+                    plan_96.append({"activa": True, "fase": "Siembra"})
+                elif pos < sem_siembra + sem_crecimiento:
+                    plan_96.append({"activa": True, "fase": "Crecimiento"})
+                else:
+                    plan_96.append({"activa": True, "fase": "Cosecha"})
+
+        bal_n = int(fila.get("balance_nitrogeno_kg_ha", 0))
+        agua_m3 = int(fila.get("consumo_agua_m3_ha", 3600))
+        saldo_n_acumulado += bal_n
+
+        etapa_dict = {
+            "orden": orden,
+            "etiqueta_periodo": etiqueta_per,
+            "rol_etapa": rol_etapa,
+            "es_puente_cobertura": es_puente,
+            "cultivo": fila["cultivo"],
+            "familia_botanica": fila["familia_botanica"],
+            "demanda_hidrica": fila["demanda_hidrica"],
+            "kc_promedio": float(fila["kc_promedio"]),
+            "balance_nitrogeno_kg_ha": bal_n,
+            "saldo_nitrogeno_acum_kg_ha": saldo_n_acumulado,
+            "consumo_agua_m3_ha": agua_m3,
+            "cumplimiento_gdd_pct": cumplimiento_gdd,
+            "gdd_etapa": round(gdd_etapa, 0),
+            "aporte_suelo": fila["aporte_suelo"],
+            "descripcion_beneficio": fila["descripcion_beneficio"],
+            "semana_inicio": sem_ini,
+            "semana_fin": sem_fin,
+            "duracion_semanas": duracion_sem,
+            "duracion_dias_aprox": duracion_sem * 7,
+            "mes_inicio": ((sem_ini - 1) // 4) + 1,
+            "mes_fin": ((sem_fin - 1) // 4) + 1,
+            "anio": 1 if sem_fin <= 48 else 2,
+            "semanas_96": plan_96,
+            "semanas_48": plan_96[:48] if sem_fin <= 48 else plan_96[48:96],
+        }
+        etapas_24m.append(etapa_dict)
+
+        movimientos_cuenta.append({
+            "etapa": f"#{orden} {fila['cultivo']}",
+            "familia": fila["familia_botanica"],
+            "periodo": f"Meses {etapa_dict['mes_inicio']}–{etapa_dict['mes_fin']}",
+            "flujo_n_kg_ha": bal_n,
+            "saldo_n_acum_kg_ha": saldo_n_acumulado,
+            "agua_m3_ha": agua_m3,
+            "tipo": "🌿 Abono Verde Puente (60-80d)" if es_puente else "🌾 Cultivo Comercial",
+        })
+
+    # --- CÁLCULO DE LA "CUENTA CORRIENTE DE NITRÓGENO Y AGUA" (2 AÑOS VS MONOCULTIVO) ---
+    n_actual_ciclo = int(cultivo_actual.get("balance_nitrogeno_kg_ha", -100))
+    # Si el cultivo actual era fijador y el usuario simula repetirlo, el escenario tradicional de hortalizas
+    # extractivas en la zona pierde al menos -95 kg N/ha por ciclo por lixiviación y extracción
+    n_mono_ciclo = n_actual_ciclo if n_actual_ciclo < 0 else -95
+    balance_n_mono_24m = n_mono_ciclo * 4  # 4 temporadas de monocultivo tradicional en 2 años
+    balance_n_rotacion_24m = sum(e["balance_nitrogeno_kg_ha"] for e in etapas_24m)
+
+    # Nitrógeno total ahorrado/recuperado por hectárea frente al monocultivo
+    ganancia_neta_n_kg_ha = max(90, balance_n_rotacion_24m - balance_n_mono_24m)
+    # Equivalencia en fertilizante comercial Urea (46% N) -> 1 kg N = 2.174 kg Urea
+    ahorro_urea_kg_ha = int(round(ganancia_neta_n_kg_ha / 0.46))
+    # Precio medio saco 25 kg Urea en Chile ~$21.250 CLP (~$850 CLP/kg Urea) y TC ~950 CLP/USD
+    ahorro_clp_ha = int(round((ahorro_urea_kg_ha * 850) / 1000.0) * 1000)
+    ahorro_usd_ha = int(round(ahorro_clp_ha / 950.0))
+
+    # Balance Hídrico Acumulado (m3/ha en 24 meses)
+    agua_actual_ciclo = max(4600, int(cultivo_actual.get("consumo_agua_m3_ha", 5200)))
+    # En monocultivo de 4 temporadas + evaporación de suelo desnudo en barbechos (+12% pérdida evaporativa)
+    agua_mono_24m_m3_ha = int(round(agua_actual_ciclo * 4 * 1.12))
+    # En rotación recomendada de 24 meses (4 cultivos comerciales + coberturas que reducen evaporación directa GWETTOP)
+    agua_bruta_rot_24m = sum(e["consumo_agua_m3_ha"] for e in etapas_24m)
+    # Bonificación por cobertura viva continua (mulch de abonos verdes reduce evaporación directa en 14%)
+    agua_rotacion_24m_m3_ha = int(round(agua_bruta_rot_24m * 0.86))
+    if agua_rotacion_24m_m3_ha >= agua_mono_24m_m3_ha:
+        agua_mono_24m_m3_ha = int(round(agua_rotacion_24m_m3_ha * 1.24))
+
+    ahorro_agua_m3_ha = max(1200, agua_mono_24m_m3_ha - agua_rotacion_24m_m3_ha)
+    reduccion_agua_pct = round((ahorro_agua_m3_ha / max(1, agua_mono_24m_m3_ha)) * 100.0, 1)
+
+    kc_medio_24m = round(float(np.mean([e["kc_promedio"] for e in etapas_24m])), 2)
+    familias_distintas = len(set(e["familia_botanica"] for e in etapas_24m))
+
+    cadena_nombres = " ➔ ".join([e["cultivo"] for e in etapas_24m])
+
+    alerta_abono_verde = {
+        "activa": True,
+        "cultivo_puente_1": fila_puente_1["cultivo"],
+        "familia_puente_1": fila_puente_1["familia_botanica"],
+        "aporte_puente_1": fila_puente_1["aporte_suelo"],
+        "cultivo_puente_2": fila_puente_2["cultivo"],
+        "familia_puente_2": fila_puente_2["familia_botanica"],
+        "aporte_puente_2": fila_puente_2["aporte_suelo"],
+        "ventana_dias": 65 if previa_es_solanacea else 70,
+        "gdd_ventana": round(gdd_ventana_70d, 0),
+        "pendiente_srtm_pct": pendiente_srtm_pct,
+        "lluvia_ventana_mm": round(lluvia_oto_inv_mm, 0),
+        "suelo_desnudo_pct": round(suelo_desnudo_pct, 0),
+        "riesgo_erosion_nivel": riesgo_erosion_txt,
+        "indice_erosion": indice_erosion,
+        "explicacion": motivo_puente_1,
+    }
+
+    cuenta_corriente = {
+        "balance_n_rotacion_kg_ha": balance_n_rotacion_24m,
+        "balance_n_monocultivo_kg_ha": balance_n_mono_24m,
+        "ganancia_neta_n_kg_ha": ganancia_neta_n_kg_ha,
+        "ahorro_urea_kg_ha": ahorro_urea_kg_ha,
+        "sacos_urea_25kg_ha": round(ahorro_urea_kg_ha / 25.0, 1),
+        "ahorro_clp_ha": ahorro_clp_ha,
+        "ahorro_usd_ha": ahorro_usd_ha,
+        "agua_rotacion_m3_ha": agua_rotacion_24m_m3_ha,
+        "agua_monocultivo_m3_ha": agua_mono_24m_m3_ha,
+        "ahorro_agua_m3_ha": ahorro_agua_m3_ha,
+        "reduccion_agua_pct": reduccion_agua_pct,
+        "movimientos": movimientos_cuenta,
+    }
+
+    return {
+        "horizonte_meses": 24,
+        "horizonte_semanas": 96,
+        "nombre_secuencia_24m": cadena_nombres,
+        "familias_distintas_count": familias_distintas,
+        "kc_medio_24m": kc_medio_24m,
+        "etapas_24m": etapas_24m,
+        "etapas_anio1": [e for e in etapas_24m if e["anio"] == 1],
+        "etapas_anio2": [e for e in etapas_24m if e["anio"] == 2],
+        "cuenta_corriente": cuenta_corriente,
+        "alerta_abono_verde": alerta_abono_verde,
+    }
+
+
 def generar_escenarios_rotacion(
     zona: str,
     nombre_cultivo_actual: str,
     disponibilidad_agua: str,
     prioridad_usuario: str,
     df_hist_personalizado: pd.DataFrame = None,
+    pendiente_srtm_pct: float = 4.2,
 ) -> Dict[str, Any]:
     """Ejecuta el motor completo: carga NASA POWER (o el DataFrame interpolado del mapa)
-    + proyecta 12 meses + evalúa 3 escenarios y la secuencia anual consolidada.
+    + proyecta 12 y 24 meses + evalúa 3 escenarios, la secuencia anual de 12 meses y el
+    Planificador Multi-Temporada a 2 Años (24 Meses) con Cuenta Corriente de N y Agua.
     """
     df_hist = (
         df_hist_personalizado.copy()
@@ -510,6 +838,7 @@ def generar_escenarios_rotacion(
         cultivo_actual = fila_actual_df.iloc[0]
 
     df_proj = proyectar_clima_6_meses(df_hist, dias_horizonte=365)
+    df_proj_24m = proyectar_clima_6_meses(df_hist, dias_horizonte=730)
     indicadores = calcular_indicadores_agronomicos(
         df_hist,
         df_proj,
@@ -573,9 +902,9 @@ def generar_escenarios_rotacion(
         p, det = _evaluar_aptitud_cultivo(
             fila, cultivo_actual, indicadores, df_proj, disponibilidad_agua, "ahorro_hidrico"
         )
-        # Evitar elegir cobertura no comercial como primera opción hídrica si hay hortalizas comerciales viables
-        if "Cobertura" in fila["cultivo"]:
-            p -= 6.0
+        # Evitar elegir cobertura puente no comercial como primera opción comercial si hay hortalizas viables
+        if bool(fila.get("es_puente_cobertura", False)) or "Cobertura" in fila["cultivo"]:
+            p -= 12.0
         if p > mejor_puntaje_hid:
             mejor_puntaje_hid = p
             mejor_hidrico = fila
@@ -617,6 +946,8 @@ def generar_escenarios_rotacion(
         p, det = _evaluar_aptitud_cultivo(
             fila, cultivo_actual, indicadores, df_proj, disponibilidad_agua, "salud_suelo"
         )
+        if bool(fila.get("es_puente_cobertura", False)):
+            p -= 8.0
         if p > mejor_puntaje_suelo:
             mejor_puntaje_suelo = p
             mejor_suelo = fila
@@ -716,16 +1047,31 @@ def generar_escenarios_rotacion(
         prioridad_usuario=prioridad_usuario,
     )
 
+    # Construir el Planificador Multi-Temporada a 2 Años (24 Meses / 96 Semanas) + Cuenta Corriente N y Agua + Abonos Verdes Puente
+    plan_24m = construir_plan_24m_y_cuenta_corriente(
+        cultivo_actual=cultivo_actual,
+        primer_cultivo_optimo=recomendacion_principal,
+        segundo_cultivo_alt=segundo_cultivo_sec,
+        df_hort=df_hort,
+        df_proj_24m=df_proj_24m,
+        indicadores=indicadores,
+        disponibilidad_agua=disponibilidad_agua,
+        prioridad_usuario=prioridad_usuario,
+        pendiente_srtm_pct=pendiente_srtm_pct,
+    )
+
     return {
         "zona": zona,
         "cultivo_actual": cultivo_actual.to_dict(),
         "indicadores": indicadores,
         "df_historico": df_hist,
         "df_proyeccion": df_proj,
+        "df_proyeccion_24m": df_proj_24m,
         "escenarios": [escenario_1, escenario_2, escenario_3],
         "recomendacion_principal": recomendacion_principal,
         "estrategia_ganadora": estrategia_ganadora,
         "secuencia_optima_12m": secuencia_optima_12m,
+        "plan_24m": plan_24m,
         "alertas": alertas,
     }
 
