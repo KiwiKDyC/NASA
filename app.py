@@ -1615,23 +1615,26 @@ def main():
         unsafe_allow_html=True,
     )
 
-    with st.expander("📊 Ver Gráfico y Cartola Detallada de la Cuenta Corriente de Nitrógeno y Agua (Temporada por Temporada)", expanded=False):
-        st.plotly_chart(
-            crear_figura_cuenta_corriente_n_agua(cuenta, cultivo_sel),
-            use_container_width=True,
-        )
-        df_movs = pd.DataFrame(cuenta["movimientos"]).rename(
-            columns={
-                "etapa": "Etapa / Cultivo",
-                "familia": "Familia Botánica",
-                "periodo": "Meses",
-                "tipo": "Rol en la Rotación",
-                "flujo_n_kg_ha": "Aporte / Extracción N (kg N/ha)",
-                "saldo_n_acum_kg_ha": "Saldo N Acumulado (kg N/ha)",
-                "agua_m3_ha": "Demanda de Agua (m³/ha)",
-            }
-        )
-        st.dataframe(df_movs, use_container_width=True, hide_index=True)
+    st.markdown(
+        '<div class="section-header header-water">📊 Gráfico y Cartola Detallada de la Cuenta Corriente de Nitrógeno y Agua (Temporada por Temporada)</div>',
+        unsafe_allow_html=True,
+    )
+    st.plotly_chart(
+        crear_figura_cuenta_corriente_n_agua(cuenta, cultivo_sel),
+        use_container_width=True,
+    )
+    df_movs = pd.DataFrame(cuenta["movimientos"]).rename(
+        columns={
+            "etapa": "Etapa / Cultivo",
+            "familia": "Familia Botánica",
+            "periodo": "Meses",
+            "tipo": "Rol en la Rotación",
+            "flujo_n_kg_ha": "Aporte / Extracción N (kg N/ha)",
+            "saldo_n_acum_kg_ha": "Saldo N Acumulado (kg N/ha)",
+            "agua_m3_ha": "Demanda de Agua (m³/ha)",
+        }
+    )
+    st.dataframe(df_movs, use_container_width=True, hide_index=True)
 
     # Tarjetas de las 6 etapas encadenadas (4 Temporadas Comerciales + 2 Puentes de Abono Verde) en 2 filas limpias (Año 1 y Año 2)
     for anio_num, lista_etapas_anio in [(1, plan_24m["etapas_anio1"]), (2, plan_24m["etapas_anio2"])]:
@@ -1671,112 +1674,114 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-    # --- ÚNICA CARTA GANTT VISUAL QUE MUESTRA EL PERIODO COMPLETO SIN DESLIZAR (CON ALTERNADOR 24M / AÑO 1 / AÑO 2) ---
+    # --- CARTAS GANTT MULTI-TEMPORADA (24 MESES SEPARADOS POR AÑO: CADA 12 MESES EN SU PROPIA TABLA SIN SELECTOR) ---
     st.markdown(
         '<div class="section-header header-earth">🗓️ Carta Gantt Multi-Temporada (24 Meses: Año 1 y Año 2 a Vista Completa sin Deslizar)</div>',
         unsafe_allow_html=True,
     )
-    opcion_vista_gantt = st.radio(
-        "Selecciona el horizonte que deseas visualizar en la Carta Gantt:",
-        options=[
-            "🗓️ Vista Completa 24 Meses (Año 1 + Año 2 — 4 Temporadas + Abonos Verdes)",
-            "📅 Solo Año 1 en Detalle Semanal (Meses 1 al 12 — Semanas 1 a 48)",
-            "📅 Solo Año 2 en Detalle Semanal (Meses 13 al 24 — Semanas 49 a 96)",
-        ],
-        horizontal=True,
-        index=0,
-    )
-    if "Año 1 en Detalle" in opcion_vista_gantt:
-        modo_gantt = "anio_1"
-    elif "Año 2 en Detalle" in opcion_vista_gantt:
-        modo_gantt = "anio_2"
-    else:
-        modo_gantt = "24_meses"
 
+    st.markdown(
+        "<div style='font-size:1.02rem; font-weight:900; color:#0B3D91; margin:0.3rem 0 0.25rem 0;'>"
+        "📅 Tabla Carta Gantt — AÑO 1 (Meses 1 al 12 • Semanas 1 a 48)"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.plotly_chart(
-        construir_figura_gantt_plotly(plan_24m, modo_vista=modo_gantt),
+        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_1"),
         use_container_width=True,
     )
 
-    # Conservamos intactas las 3 tarjetas comparativas de escenarios en un bloque desplegable limpio
-    with st.expander("🔍 Ver Comparativa Detallada frente al Monocultivo y Otras Alternativas Individuales", expanded=False):
-        cols_esc = st.columns(3)
-        estilos_tarjeta = ["crop-card-danger", "crop-card-water", "crop-card-winner"]
-        iconos_medalla = ["⛔ NO REPETIR", "💧 OPCIÓN AHORRO AGUA", "🌱 OPCIÓN NUTRE LA TIERRA"]
+    st.markdown(
+        "<div style='font-size:1.02rem; font-weight:900; color:#1B5E20; margin:0.6rem 0 0.25rem 0;'>"
+        "📅 Tabla Carta Gantt — AÑO 2 (Meses 13 al 24 • Semanas 49 a 96)"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.plotly_chart(
+        construir_figura_gantt_plotly(plan_24m, modo_vista="anio_2"),
+        use_container_width=True,
+    )
 
-        for idx, esc in enumerate(resultado["escenarios"]):
-            es_ganador = esc["titulo"] == ganador["titulo"]
-            clase_card = "crop-card-winner" if es_ganador else estilos_tarjeta[idx]
-            icono_c = obtener_icono_cultivo(esc["cultivo_recomendado"])
-            det = esc["detalles"]
-            viab = int(round(esc["puntaje_viabilidad"]))
+    # --- COMPARATIVA DETALLADA FRENTE AL MONOCULTIVO Y OTRAS ALTERNATIVAS INDIVIDUALES (VISTA NORMAL DIRECTA) ---
+    st.markdown(
+        '<div class="section-header header-leaf">🔍 Comparativa Detallada frente al Monocultivo y Otras Alternativas Individuales</div>',
+        unsafe_allow_html=True,
+    )
+    cols_esc = st.columns(3)
+    estilos_tarjeta = ["crop-card-danger", "crop-card-water", "crop-card-winner"]
+    iconos_medalla = ["⛔ NO REPETIR", "💧 OPCIÓN AHORRO AGUA", "🌱 OPCIÓN NUTRE LA TIERRA"]
 
-            if esc["demanda_hidrica"] == "Baja":
-                gotas_txt = "💧 Baja (Poca Agua)"
-            elif esc["demanda_hidrica"] == "Media":
-                gotas_txt = "💧💧 Media"
-            else:
-                gotas_txt = "💧💧💧 Alta (Mucha Agua)"
+    for idx, esc in enumerate(resultado["escenarios"]):
+        es_ganador = esc["titulo"] == ganador["titulo"]
+        clase_card = "crop-card-winner" if es_ganador else estilos_tarjeta[idx]
+        icono_c = obtener_icono_cultivo(esc["cultivo_recomendado"])
+        det = esc["detalles"]
+        viab = int(round(esc["puntaje_viabilidad"]))
 
-            color_barra = "#E53935" if idx == 0 else ("#0288D1" if idx == 1 else "#2E7D32")
-            etiqueta_top = "🏆 MEJOR INICIO DE CICLO" if es_ganador else iconos_medalla[idx]
+        if esc["demanda_hidrica"] == "Baja":
+            gotas_txt = "💧 Baja (Poca Agua)"
+        elif esc["demanda_hidrica"] == "Media":
+            gotas_txt = "💧💧 Media"
+        else:
+            gotas_txt = "💧💧💧 Alta (Mucha Agua)"
 
-            if idx == 0:
-                consejo_corto = f"⚠️ Cuidado: Si repites {cultivo_sel}, las plagas quedan en la tierra y rinde menos."
-            elif idx == 1:
-                consejo_corto = f"💧 Ideal con poca agua: gasta menos riego y limpia las plagas de {cultivo_sel}."
-            else:
-                consejo_corto = f"🤎 Abono natural: deja la tierra descansada y con alimento (Nitrógeno) para después."
+        color_barra = "#E53935" if idx == 0 else ("#0288D1" if idx == 1 else "#2E7D32")
+        etiqueta_top = "🏆 MEJOR INICIO DE CICLO" if es_ganador else iconos_medalla[idx]
 
-            with cols_esc[idx]:
-                st.markdown(
-                    f"""
-                    <div class="crop-card {clase_card}">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                            <span style="background:{color_barra}; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.78rem; font-weight:900;">
-                                {etiqueta_top}
-                            </span>
-                            <span style="font-size:1.1rem; font-weight:900; color:{color_barra} !important;">
-                                {viab}% Éxito
-                            </span>
-                        </div>
-                        <div style="display:flex; align-items:center; margin:0.4rem 0;">
-                            <span class="crop-emoji-big">{icono_c}</span>
-                            <div>
-                                <p class="crop-title-big">{esc['cultivo_recomendado']}</p>
-                                <span style="font-size:0.85rem; font-weight:700; color:#5D4037 !important;">
-                                    🌿 Familia: {esc['familia_botanica']}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="progress-track">
-                            <div style="width:{viab}%; background:{color_barra}; height:100%; border-radius:999px;"></div>
-                        </div>
-                        <div class="visual-chips-grid">
-                            <div class="v-chip chip-water">
-                                <span class="label">Consumo de Agua</span>
-                                <span class="val">{gotas_txt}</span>
-                            </div>
-                            <div class="v-chip chip-earth">
-                                <span class="label">Aporte a la Tierra</span>
-                                <span class="val">🤎 {esc['aporte_suelo'].split()[0]}</span>
-                            </div>
-                            <div class="v-chip chip-leaf">
-                                <span class="label">Tiempo a Cosecha</span>
-                                <span class="val">🗓️ {esc['ciclo_dias']} días</span>
-                            </div>
-                            <div class="v-chip chip-sun">
-                                <span class="label">Riesgo Heladas</span>
-                                <span class="val">❄️ {det['dias_riesgo_helada']} días</span>
-                            </div>
-                        </div>
-                        <div class="short-tip" style="border-left-color:{color_barra};">
-                            {consejo_corto}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        if idx == 0:
+            consejo_corto = f"⚠️ Cuidado: Si repites {cultivo_sel}, las plagas quedan en la tierra y rinde menos."
+        elif idx == 1:
+            consejo_corto = f"💧 Ideal con poca agua: gasta menos riego y limpia las plagas de {cultivo_sel}."
+        else:
+            consejo_corto = f"🤎 Abono natural: deja la tierra descansada y con alimento (Nitrógeno) para después."
+
+        with cols_esc[idx]:
+            st.markdown(
+                f"<div class='crop-card {clase_card}'>"
+                f"<div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;'>"
+                f"<span style='background:{color_barra}; color:white !important; padding:0.25rem 0.75rem; border-radius:999px; font-size:0.78rem; font-weight:900;'>"
+                f"{etiqueta_top}"
+                f"</span>"
+                f"<span style='font-size:1.1rem; font-weight:900; color:{color_barra} !important;'>"
+                f"{viab}% Éxito"
+                f"</span>"
+                f"</div>"
+                f"<div style='display:flex; align-items:center; margin:0.4rem 0;'>"
+                f"<span class='crop-emoji-big'>{icono_c}</span>"
+                f"<div>"
+                f"<p class='crop-title-big'>{esc['cultivo_recomendado']}</p>"
+                f"<span style='font-size:0.85rem; font-weight:700; color:#5D4037 !important;'>"
+                f"🌿 Familia: {esc['familia_botanica']}"
+                f"</span>"
+                f"</div>"
+                f"</div>"
+                f"<div class='progress-track'>"
+                f"<div style='width:{viab}%; background:{color_barra}; height:100%; border-radius:999px;'></div>"
+                f"</div>"
+                f"<div class='visual-chips-grid'>"
+                f"<div class='v-chip chip-water'>"
+                f"<span class='label'>Consumo de Agua</span>"
+                f"<span class='val'>{gotas_txt}</span>"
+                f"</div>"
+                f"<div class='v-chip chip-earth'>"
+                f"<span class='label'>Aporte a la Tierra</span>"
+                f"<span class='val'>🤎 {esc['aporte_suelo'].split()[0]}</span>"
+                f"</div>"
+                f"<div class='v-chip chip-leaf'>"
+                f"<span class='label'>Tiempo a Cosecha</span>"
+                f"<span class='val'>🗓️ {esc['ciclo_dias']} días</span>"
+                f"</div>"
+                f"<div class='v-chip chip-sun'>"
+                f"<span class='label'>Riesgo Heladas</span>"
+                f"<span class='val'>❄️ {det['dias_riesgo_helada']} días</span>"
+                f"</div>"
+                f"</div>"
+                f"<div class='short-tip' style='border-left-color:{color_barra};'>"
+                f"{consejo_corto}"
+                f"</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
     # =========================================================================
     # SECCIÓN 2: UNA FIGURA PARA CADA VARIABLE SATELITAL (AGUA, TIERRA, SOL)
@@ -1987,21 +1992,27 @@ def main():
     st.plotly_chart(fig_evol, use_container_width=True)
 
     # =========================================================================
-    # SECCIÓN 4: PANEL PARA USUARIOS CON EXPERIENCIA / AGRÓNOMOS (COMPLEMENTARIO)
+    # SECCIÓN 4: PANEL PARA USUARIOS CON EXPERIENCIA / AGRÓNOMOS (VISTA NORMAL DIRECTA)
     # =========================================================================
-    with st.expander("🔬 ¿Eres agricultor con experiencia o técnico agrícola? Haz clic aquí para ver las tablas técnicas completas"):
-        t1, t2 = st.tabs([
-            "📊 Tabla Técnica de Cultivos (Kc, GDD, Heladas)",
-            "🛰️ Datos Crudos del Satélite NASA POWER + Sentinel-2",
-        ])
-        with t1:
-            st.dataframe(df_hortalizas, use_container_width=True, hide_index=True)
-        with t2:
-            st.dataframe(
-                resultado["df_historico"].tail(90).sort_values("fecha", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-            )
+    st.markdown(
+        '<div class="section-header header-water">🔬 Tablas Técnicas Completas (Catálogo Agronómico y Datos Satelitales NASA POWER + Sentinel-2)</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div style='font-size:0.95rem; font-weight:900; color:#1B5E20; margin:0.3rem 0;'>📊 Tabla Técnica de Cultivos (Kc, GDD, Heladas, Nitrógeno y Agua)</div>",
+        unsafe_allow_html=True,
+    )
+    st.dataframe(df_hortalizas, use_container_width=True, hide_index=True)
+
+    st.markdown(
+        "<div style='font-size:0.95rem; font-weight:900; color:#01579B; margin:0.6rem 0 0.3rem 0;'>🛰️ Datos Recientes del Satélite NASA POWER + Copernicus Sentinel-2 (Últimos 90 días)</div>",
+        unsafe_allow_html=True,
+    )
+    st.dataframe(
+        resultado["df_historico"].tail(90).sort_values("fecha", ascending=False),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 if __name__ == "__main__":
