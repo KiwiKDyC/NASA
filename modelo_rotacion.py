@@ -680,7 +680,7 @@ def construir_plan_24m_y_cuenta_corriente(
     if previa_es_solanacea:
         fila_puente_1 = puentes[puentes["cultivo"].str.contains("Mostaza", case=False, regex=False)].iloc[0]
         razon_puente_1_corta = (
-            f"Como vienes de {cultivo_actual['cultivo']} ({cultivo_actual['familia_botanica']}), la tierra queda "
+            f"Como vienes de {cultivo_actual['cultivo']}, la tierra queda "
             f"con riesgo de hongos y nemátodos. Sembrar Mostaza Blanca limpia y desinfecta las raíces de forma natural."
         )
         razon_puente_2_corta = (
@@ -690,7 +690,7 @@ def construir_plan_24m_y_cuenta_corriente(
     else:
         fila_puente_1 = puentes[puentes["cultivo"].str.contains("Vicia (Abono", case=False, regex=False)].iloc[0]
         razon_puente_1_corta = (
-            f"Tras cosechar {cultivo_actual['cultivo']} (que extrae {balance_n_previo} kg N/ha), la Vicia cubre la "
+            f"Tras cosechar {cultivo_actual['cultivo']}, la Vicia cubre la "
             "tierra contra la erosión e inyecta +90 kg de Nitrógeno natural por hectárea."
         )
         razon_puente_2_corta = (
@@ -811,16 +811,16 @@ def construir_plan_24m_y_cuenta_corriente(
 
         # Categorización e interpretación sencilla para la tarjeta de Detalles de Ciclos
         if bal_n >= 60:
-            cat_n_txt = f"🟢 Inyecta Nitrógeno (+{bal_n} kg N/ha)"
+            cat_n_txt = "🟢 Inyecta Nitrógeno"
             explicacion_n = "Fertiliza biológicamente la tierra sin comprar Urea."
         elif bal_n > 0:
-            cat_n_txt = f"🟢 Aporte Ligero (+{bal_n} kg N/ha)"
+            cat_n_txt = "🟢 Aporte Ligero"
             explicacion_n = "Cubre el suelo y aporta biomasa limpia."
         elif bal_n >= -55:
-            cat_n_txt = f"🟡 Extracción Moderada ({bal_n} kg N/ha)"
+            cat_n_txt = "🟡 Extracción Moderada"
             explicacion_n = "Consumo moderado, compensado por los abonos verdes del plan."
         else:
-            cat_n_txt = f"🟠 Extracción Alta ({bal_n} kg N/ha)"
+            cat_n_txt = "🟠 Extracción Alta"
             explicacion_n = "Exige suelo nutrido previamente por leguminosas."
 
         if var_dias < -3:
